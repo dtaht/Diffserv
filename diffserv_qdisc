@@ -1,0 +1,36 @@
+#!/bin/sh
+
+DEV=eth1
+IN=17mbit
+OUT=4400kbit
+
+# My problem with htb is that it handles problems by dropping packets
+
+tc class add dev $DEV root handle 1:0 htb
+tc class add dev $DEV parent 1:0 classid 1:1 htb rate $OUT
+tc class add dev $DEV parent 1:1 classid 1:2 htb rate $(OUT*.7) ceil $(OUT*.3) # Main Net
+tc class add dev $DEV parent 1:1 classid 1:3 htb rate $(OUT*.3) ceil $(OUT*.7) # Guest Net
+
+# Where I'd rather be marking them
+
+# http://www.opalsoft.net/qos/DS-29.htm
+# The big thing here is to give GRED something to use
+tc qdisc add dev $DEV handle 1:0 root dsmark indices 64 set_tc_index
+
+#Probably better is
+#tc qdisc add dev $DEV parent 1:1 handle 2:0 dsmark indexes 8 default_index 7
+
+# Asseveration: The 4-rightmost bits of the skb->tc_index field are used by the GRED queuing discipline to select a red virtual queue (VQ) for the packet entering the discipline. If the value (4-rightmost bits) is out of range of number of virtual queues, the skb->tc_index field is set (it shouldn't be) to the number of the default virtual queue by the GRED queuing discipline.
+
+tc qdisc add dev $DEV parent 1:0 gred setup DPs 3 default 3
+
+# The default MSS window on Linux is now 8, I think. don't know what it is elsewhere
+
+tc qdisc change dev $DEV parent 1:0 gred limit 3000 min 400 max 800 burst 6 avpkt 128 bandwidth 10Mbit DP 1 probability 0.01
+tc qdisc change dev $DEV parent 1:0 gred limit 3000 min 400 max 800 burst 6 avpkt 256 bandwidth 10Mbit DP 2 probability 0.02
+tc qdisc change dev $DEV parent 1:0 gred limit 3000 min 400 max 800 burst 6 avpkt 512 bandwidth 10Mbit DP 3 probability 0.03
+
+# SFQ on internal ethernet, SFQ on external ethernet 
+# tc qdisc add dev $DEV root sfq perturb 10
+# lastly pfifo_fast ordering
+

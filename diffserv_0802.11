@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# NoAck
+
+# In QoS mode, service class for frames to send can have two values: QosAck and QosNoAck. Frames with QosNoAck are not acknowledged. This avoids retransmission of highly time-critical data.
+
+# http://en.wikipedia.org/wiki/IEEE_802.11e-2005
+# Background (AC_BK) 	31 	1023 	7 	0
+# Best Effort (AC_BE) 	31 	1023 	3 	0
+# Video (AC_VI) 	15 	31 	2 	3.008ms
+# Voice (AC_VO) 	7 	15 	2 	1.504ms
+# Legacy DCF 	15 	1023 	2 	0
+
+# http://en.wikipedia.org/wiki/IEEE_802.1Q
+# PCP code points mac header in the vlan frame
+# 1 	0 (lowest) 	Background
+# 0 	1 	Best Effort
+# 2 	2 	Excellent Effort
+# 3 	3 	Critical Applications
+# 4 	4 	Video, < 100 ms latency
+# 5 	5 	Voice, < 10 ms latency
+# 6 	6 	Internetwork Control
+# 7 	7 (highest) 	Network Control
+

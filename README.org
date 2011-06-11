@@ -1,0 +1,53 @@
+* Definitive Packet Classifier
+
+This is an attempt to fully implement rfc 4594, along with some proposed extensions,
+at the edge router on the home gateway. The results should be suitable also for
+hotels, convention centers and small businesses.
+
+It could be further extended by supplying tables to end machines, to classify
+their behavior at the switch, rather than router level.
+
+It is being tested within the auspices of the 'uberwrt' series of projects.
+
+* Requirements
+** Be both ipv6 and ipv4 enabled. 
+** Handle packet encapsulation (VPN) traffic correctly
+* Components
+** Debloating Techniques
+*** Minimize multicast
+*** Short queue lengths
+*** Use web proxies by default (wpad and dhcp supplied)
+*** ECN Enabled
+*** Optimizations for 
+
+** Classifier
+*** Shall include comprehensive port to dscp database.
+*** Shall also include anti-worm filtering
+** Bandwidth Shaper(s) and policer(s)
+The bandwidth shapers should be as simple as possible, but no simpler.
+
+Example logic would include the number and type of machines in a household,
+the kinds of traffic the user expects, etc.
+
+*** It would be good to allow for bandwidth sharing.
+*** Should penalize
+
+** DSCP statistics
+Complete DSCP statistics will be kept.
+
+** Wired and Wireless awareness
+*** 802.11e converter
+Wherever possible, packets will be transformed into their proper 802.11e classes.
+*** 802.11d converter
+Wherever possible, packets will be transformed into their proper 802.11d classes.
+* Futures
+** Simple lookup tables for DSCP <-> Port mappings
+** Simple lookup tables for threats
+** Support for multiple switch types and vlan prioritizations
+
+* Tasks Ahead
+** TODO Write Good classifier
+** Analyze existing realistic traffic
+** Measure existing shapers
+** Implement ECN in existing shapers
+** 
