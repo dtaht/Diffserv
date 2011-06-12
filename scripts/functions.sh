@@ -150,7 +150,7 @@ fi
 	    --comment 'Bandwidth Tests'
 # There is no codepoint for torrent. Perhaps we need to invent one
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $P2PPORTS -j DSCP --set-dscp $PTP -m comment \
+	    --ports $P2PPORTS -j DSCP --set-dscp $P2P -m comment \
 	    --comment 'P2P'
 
 # It would be nice if network radio had not gone port 80, AF3X
@@ -236,14 +236,20 @@ dscp_80211e() {
     $iptables -A Wireless -o $device -m dscp --dscp $BOFH -j CONNMARK --set-mark 261
     $iptables -A Wireless -o $device -m dscp --dscp-class EF -j CONNMARK --set-mark 263
     $iptables -A Wireless -o $device -m dscp --dscp-class CS1 -j CONNMARK --set-mark 257
-    $iptables -A Wireless -o $device -m dscp --dscp $PTP -j CONNMARK --set-mark 257
+    $iptables -A Wireless -o $device -m dscp --dscp $P2P -j CONNMARK --set-mark 257
     $iptables -A Wireless -o $device -m dscp --dscp-class CS2 -j CONNMARK --set-mark 257
     done
 }
 
 dscp_8021d() {
-local device=$1
-:
+    local device=$1
+    local iptables
+    for iptables in iptables ip6tables
+    do
+    dscp_recreate_filter $iptables filter Wired
+	:
+	# finish me
+	done
 }
 
 
@@ -285,7 +291,7 @@ dscp_stats() {
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $BOFH -m comment --comment 'BOFH' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $MICE -m comment --comment 'MICE' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $LB -m comment --comment 'LB' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp $PTP -m comment --comment 'P2P' -g DSCP_END
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp $P2P -m comment --comment 'P2P' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m comment --comment 'Unmatched' -j LOG
     done
 }
