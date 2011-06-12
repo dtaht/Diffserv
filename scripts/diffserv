@@ -3,6 +3,8 @@
 . /usr/lib/diffserv/functions.sh
 . /etc/diffserv.conf
 
+# DEBUG_LOG=/tmp/diffserv.$$
+
 case $1 in 
     up) dscp_start ;;
     down) dscp_stop ;;

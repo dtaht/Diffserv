@@ -1,30 +1,28 @@
 # Functions for classifying packets into DIFFSERV buckets
 
-# I am not sure why I used tcp and udp distinctions. IP
+dscp_recreate_filter() {
+    local iptables=$1
+    local filter=$2
+    local chain=$3
+    $iptables -t $filter -F $chain 2> $DEBUG_LOG
+    $iptables -t $filter -X $chain 2> $DEBUG_LOG
+    $iptables -t $filter -N $chain 2> $DEBUG_LOG
+}
+
+# I am not sure why I used tcp and udp distinctions. 
 # would probably have been saner in many cases
-# FIXME: Do other protocols (41?) Be thorough.
+# FIXME: Do other protocols (41,50,51,58) Be thorough.
 
 dscp_classify() {
     local iptables
     for iptables in iptables ip6tables
     do
-	$iptables -t mangle -X Mice_END
-	$iptables -t mangle -N Mice_END
-	$iptables -t mangle -F Mice_END
+	dscp_recreate_filter $iptables mangle Mice_END
+	dscp_recreate_filter $iptables mangle Mice
+	dscp_recreate_filter $iptables mangle D_CLASSIFIER_END
+	dscp_recreate_filter $iptables mangle D_CLASSIFIER 
 
-	$iptables -t mangle -X Mice
-	$iptables -t mangle -N Mice
-	$iptables -t mangle -F Mice
-
-	$iptables -t mangle -X D_CLASSIFIER_END
-	$iptables -t mangle -N D_CLASSIFIER_END
-	$iptables -t mangle -F D_CLASSIFIER_END
-
-	$iptables -t mangle -X D_CLASSIFIER 
-	$iptables -t mangle -N D_CLASSIFIER
-	$iptables -t mangle -F D_CLASSIFIER 
-
-# I'm not certain this is a good idea, but it is a mouse.
+# I'm not certain this is a good idea, but the initial syn and syn/ack is a mouse.
 
 	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp --syn -j DSCP \
 	    --set-dscp-class AF21 -m comment --comment 'Expedite new connections' 
@@ -52,7 +50,7 @@ dscp_classify() {
 	$iptables -t mangle -A Mice -p udp -m multiport --ports $SIGNALPORTS \
 	    -j DSCP --set-dscp-class CS5 -m comment \
 	    --comment 'VOIP Signalling'
-	$iptables -t mangle -A Mice -p udp -m multiport --ports $VOIPPORTS,$NTPPORT \
+	$iptables -t mangle -A Mice -p udp -m multiport --ports $VOIPPORTS,$NTPPORTS \
 	    -j DSCP --set-dscp-class EF -m comment --comment 'VOIP'
 	$iptables -t mangle -A Mice -p udp -m multiport --ports $GAMINGPORTS \
 	    -j DSCP --set-dscp-class CS4 -m comment --comment 'Gaming'
@@ -65,6 +63,7 @@ dscp_classify() {
 	if [ "$iptables" = "ip6tables" ]
 	then
 # addrtype for ipv6 isn't compiled in by default
+# Perhaps tracking ICMP is important
 	    $iptables -t mangle -A Mice -s fe80::/10 -d fe80::/10 \
 		-j DSCP --set-dscp $MICE \
 		-m comment --comment 'Link Local sorely needed'
@@ -123,7 +122,18 @@ fi
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $SCMPORTS -j DSCP --set-dscp-class CS2 \
 	    -m comment --comment 'SCM'
+
 # FIXME: Streaming Ports? Database Ports? What else did I miss?
+
+	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	    --ports $DBPORTS -j DSCP --set-dscp-class AF12 \
+	    -m comment --comment 'DB'
+	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	    --ports $V_STREAMINGPORTS -j DSCP --set-dscp-class AF43 \
+	    -m comment --comment 'Video Streaming'
+	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	    --ports $A_STREAMINGPORTS -j DSCP --set-dscp-class AF41 \
+	    -m comment --comment 'Internet Radio'
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $FILEPORTS -j DSCP --set-dscp-class AF22 \
 	    -m comment --comment 'Normal File sharing'
@@ -167,6 +177,48 @@ fi
 done
 }
 
+# Ya know, I care about ipv6. Nobody else does
+# This could be more detailed, but right now...
+
+dscp_icmpv6() {
+    dscp_recreate_filter ip6tables filter ICMP6
+    ip6tables -A ICMP6 -p icmpv6 --comment 'ICMPv6 MICE' -j DSCP --set-dscp $MICE 
+}
+
+dscp_icmpv6_stats() {
+    dscp_recreate_filter ip6tables filter ICMP6_STATS
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 1 -m comment --comment 'dest unreachable'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 2 -m comment --comment 'packet too big'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 3 -m comment --comment 'parameter problem'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 128 -m comment --comment 'ping'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 129 -m comment --comment 'pong'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 130 -m comment --comment 'Group Membership query'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 131 -m comment --comment 'Group Membership report'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 132 -m comment --comment 'Group Membership Reduciton'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 133 -m comment --comment 'Router Solicitation'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 134 -m comment --comment 'Router Advertisement'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 135 -m comment --comment 'Neighbor Solicitation'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 136 -m comment --comment 'Neighbor Advertisement'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 137 -m comment --comment 'Redirect'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 138 -m comment --comment 'Router Renumbering'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 139 -m comment --comment 'Node info query'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 140 -m comment --comment 'Node info response'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 141 -m comment --comment 'Inverse NDS'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 142 -m comment --comment 'Inverse ADV'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 143 -m comment --comment 'MLDv2 Listener Report'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 144 -m comment --comment 'Home agent disc req'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 145 -m comment --comment 'Home agent reply'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 146 -m comment --comment 'Mobile prefix solicit'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 147 -m comment --comment 'Mobile prefix Adv'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 148 -m comment --comment 'Cert path solicit'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 149 -m comment --comment 'Cert path Adv'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 150 -m comment --comment 'Experimental mobility'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 151 -m comment --comment 'MRD advertisment'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 152 -m comment --comment 'MRD Solicitation'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 153 -m comment --comment 'MRD Termination'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 154 -m comment --comment 'FMIPv6'
+}
+
 # Classify Diffserv marked packets into the right 802.11e buckets
 # I think I need to set the skb priority field using tc however
 
@@ -177,9 +229,7 @@ dscp_80211e() {
 
     for iptables in iptables ip6tables
     do
-    $iptables -X Wireless 
-    $iptables -N Wireless
-    $iptables -F Wireless 
+    dscp_recreate_filter $iptables filter Wireless 
     $iptables -A Wireless -o $device -m dscp --dscp-class CS6 -j CONNMARK --set-mark 261
     $iptables -A Wireless -o $device -m dscp --dscp-class CS5 -j CONNMARK --set-mark 263
     $iptables -A Wireless -o $device -m dscp --dscp-class EF -j CONNMARK --set-mark 263
@@ -193,6 +243,7 @@ local device=$1
 :
 }
 
+
 # This attempts to keep track of DSCP classified packets in one chain.
 # This should really be sorted by frequency and done more cleverly but for now...
 # -j RETURN might make more sense
@@ -202,14 +253,10 @@ dscp_stats() {
     local iptables
     for iptables in iptables ip6tables
     do
-    $iptables -t filter -F DSCP_END
-    $iptables -t filter -X DSCP_END
-    $iptables -t filter -N DSCP_END
-
-    $iptables -t filter -F DSCP_STATS
-    $iptables -t filter -X DSCP_STATS
-    $iptables -t filter -N DSCP_STATS
-    $iptables -t filter -A DSCP_STATS -m multiport --ports $VPNPORTS -m comment --comment  'VPN'    
+    dscp_recreate_filter $iptables filter DSCP_END
+    dscp_recreate_filter $iptables filter DSCP_STATS
+    
+    $iptables -t filter -A DSCP_STATS -p udp -m multiport --ports $VPNPORTS -m comment --comment  'VPN'    
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class BE -m comment --comment  'BE'    -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class EF -m comment --comment  'EF'    -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF11 -m comment --comment 'AF11' -g DSCP_END
@@ -234,6 +281,7 @@ dscp_stats() {
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $BOFH -m comment --comment 'BOFH' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $MICE -m comment --comment 'MICE' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $LB -m comment --comment 'LB' -g DSCP_END
+#    $iptables -t filter -A DSCP_STATS -m dscp --dscp $PTP -m comment --comment 'P2P' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m comment --comment 'Unmatched' -j LOG
     done
 }
@@ -242,13 +290,21 @@ dscp_reset() {
 :
 }
 
+# The only way I know how to cope with this is brute force
+
+dscp_clean() {
+	ip6tables -F
+	ip6tables -t mangle -F
+	iptables -F
+	iptables -t mangle -F
+}
+
 dscp_finalize() {
     for iptables in iptables ip6tables
     do
-	$iptables -t mangle -F PREROUTING
+# Not quite convinced this is right
 	$iptables -t mangle -A PREROUTING -j D_CLASSIFIER
 	$iptables -t mangle -A PREROUTING -j D_CLASSIFIER_END
-	$iptables -t mangle -F OUTPUT
 	$iptables -t mangle -A OUTPUT -j D_CLASSIFIER
 	$iptables -t mangle -A OUTPUT -j D_CLASSIFIER_END
 	$iptables -A OUTPUT -j Wireless
@@ -256,19 +312,28 @@ dscp_finalize() {
 	$iptables -A OUTPUT -j DSCP_STATS
 	$iptables -A FORWARD -j DSCP_STATS
     done
+# Not clear I have to treat ICMPv6 specially but...
+        ip6tables -A OUTPUT -p 58 -s fe80::/10 -j ICMP6
+        ip6tables -A FORWARD -p 58 -s fe80::/10 -j ICMP6
+	ip6tables -A OUTPUT -p 58 -j ICMP6_STATS 
+	ip6tables -A FORWARD -p 58 -j ICMP6_STATS
+
 }
 
 dscp_start() {
     dscp_clean
+    dscp_icmpv6
+    dscp_icmpv6_stats
     dscp_stats
     dscp_classify
+# Ultimately drive these with variables
     dscp_80211e wlan+
     dscp_8021d eth+
     dscp_finalize
 }
 
 dscp_stop() {
-:
+dscp_clean
 }
 
 dscp_restart() {
@@ -276,9 +341,20 @@ dscp_restart() {
     dscp_start
 }
 
-dscp_status() {
-    ip6tables -v -n -L DSCP_STATS
+dscp_status4() {
     iptables -v -n -L DSCP_STATS
+}
+
+dscp_status6() {
+    ip6tables -v -n -L DSCP_STATS
+    ip6tables -v -n -L ICMP6_STATS
+}
+
+dscp_status() {
+    echo "IPV6 Stats"
+    dscp_status6
+    echo "IPV4 Stats"
+    dscp_status4
 }
 
 dscp_help() {
