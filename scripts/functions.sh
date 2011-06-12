@@ -278,10 +278,11 @@ dscp_stats() {
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS3 -m comment --comment 'CS3'   -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS2 -m comment --comment 'CS2'   -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS1 -m comment --comment 'CS1'   -g DSCP_END
+# Some non-standardized classifications
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $BOFH -m comment --comment 'BOFH' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $MICE -m comment --comment 'MICE' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp $LB -m comment --comment 'LB' -g DSCP_END
-#    $iptables -t filter -A DSCP_STATS -m dscp --dscp $PTP -m comment --comment 'P2P' -g DSCP_END
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp $PTP -m comment --comment 'P2P' -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m comment --comment 'Unmatched' -j LOG
     done
 }

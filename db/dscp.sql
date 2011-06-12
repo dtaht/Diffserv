@@ -2,7 +2,7 @@
 
 create domain diffserv_t as varchar(4) default 'BE' NOT NULL;
 
-drop table diffserv;
+drop table diffserv cascade;
 
 create table diffserv (
        id diffserv_t,
@@ -36,5 +36,6 @@ insert into diffserv values ('CS7',56);
 insert into diffserv values ('BOFH',4); -- OR IT
 insert into diffserv values ('LB',63);
 insert into diffserv values ('MICE',42);
+insert into diffserv values ('P2P',33);
 
 create view diffserv_v as select id, cp, to_hex(cp::integer) cp_hex,cp::integer::bit(6) as cp_bit from diffserv; 
