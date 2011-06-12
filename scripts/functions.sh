@@ -1,5 +1,9 @@
 # Functions for classifying packets into DIFFSERV buckets
 
+# I am not sure why I used tcp and udp distinctions. IP
+# would probably have been saner in many cases
+# FIXME: Do other protocols (41?) Be thorough.
+
 dscp_classify() {
     local iptables
     for iptables in iptables ip6tables
@@ -19,6 +23,8 @@ dscp_classify() {
 	$iptables -t mangle -X D_CLASSIFIER 
 	$iptables -t mangle -N D_CLASSIFIER
 	$iptables -t mangle -F D_CLASSIFIER 
+
+# I'm not certain this is a good idea, but it is a mouse.
 
 	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp --syn -j DSCP \
 	    --set-dscp-class AF21 -m comment --comment 'Expedite new connections' 
@@ -52,18 +58,21 @@ dscp_classify() {
 	    -j DSCP --set-dscp-class CS4 -m comment --comment 'Gaming'
 	$iptables -t mangle -A Mice -p udp -m multiport --ports $MONITORPORTS \
 	    -j DSCP --set-dscp-class CS6 -m comment --comment 'SNMP'
+	$iptables -t mangle -A Mice -p udp -m udp -m multiport \
+	    --ports $GAMINGPORTS -j DSCP --set-dscp-class CS4 \
+	    -m comment --comment 'Gaming'
 
 	if [ "$iptables" = "ip6tables" ]
 	then
 # addrtype for ipv6 isn't compiled in by default
 	    $iptables -t mangle -A Mice -s fe80::/10 -d fe80::/10 \
-		-j DSCP --set-dscp-class CS6 \
+		-j DSCP --set-dscp $MICE \
 		-m comment --comment 'Link Local sorely needed'
 	    $iptables -t mangle -A Mice -d ff00::/12 \
 		-j DSCP --set-dscp-class AF43 \
 		-m comment --comment 'Multicast far less needed'
 	    $iptables -t mangle -A Mice -s fe80::/10 -d ff00::/12 \
-		-j DSCP --set-dscp-class CS6 \
+		-j DSCP --set-dscp $MICE \
 		-m comment --comment 'But link local multicast is good'
 
 # As is neighbor discovery, etc, but I haven't parsed 
@@ -74,9 +83,11 @@ dscp_classify() {
 # As for other forms of icmp, don't know
 	else
 #didn't work
-#$iptables -t mangle -A Mice -m addrtype --dst-type MULTICAST -j DSCP --set-dscp-class AF22 -m comment --comment 'Multicast'
+#$iptables -t mangle -A Mice -m addrtype --dst-type MULTICAST 
+#-j DSCP --set-dscp-class AF22 -m comment --comment 'Multicast'
+#Some forms of multicast are good, others bad, but for now...
 	    $iptables -t mangle -A Mice --pkt-type MULTICAST \
-		-j DSCP --set-dscp-class AF22 \
+		-j DSCP --set-dscp-class AF43 \
 		-m comment --comment 'Multicast'
 # Arp replies? DHCP replies?
 fi
@@ -198,6 +209,7 @@ dscp_stats() {
     $iptables -t filter -F DSCP_STATS
     $iptables -t filter -X DSCP_STATS
     $iptables -t filter -N DSCP_STATS
+    $iptables -t filter -A DSCP_STATS -m multiport --ports $VPNPORTS -m comment --comment  'VPN'    
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class BE -m comment --comment  'BE'    -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class EF -m comment --comment  'EF'    -g DSCP_END
     $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF11 -m comment --comment 'AF11' -g DSCP_END
@@ -241,6 +253,8 @@ dscp_finalize() {
 	$iptables -t mangle -A OUTPUT -j D_CLASSIFIER_END
 	$iptables -A OUTPUT -j Wireless
 	$iptables -A FORWARD -j Wireless
+	$iptables -A OUTPUT -j DSCP_STATS
+	$iptables -A FORWARD -j DSCP_STATS
     done
 }
 
@@ -270,5 +284,3 @@ dscp_status() {
 dscp_help() {
 :
 }
-
-
