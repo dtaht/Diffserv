@@ -4,7 +4,7 @@
 . /etc/diffserv.conf
 
 case $1 in 
-    up) dscp_start ;
+    up) dscp_start ;;
     down) dscp_stop ;;
     restart) dscp_restart ;;
     status) dscp_status ;;
