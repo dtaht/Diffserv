@@ -96,8 +96,8 @@ fi
 	$iptables -t mangle -A D_CLASSIFIER ! -p tcp -g Mice
 
 # FIXME: SSH rule needs to distinguish between interactive and bulk sessions
-# Actually simply codifying current practice (0x04, I think) would be
-# Better. Call it the 'IT' field. Interactive Text
+# Actually simply codifying current practice (0x04, I think or 2?) would be
+# Better. Call it the 'IT' field. Interactive Text. BOFH works too.
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $INTERACTIVEPORTS -j DSCP --set-dscp $BOFH \
@@ -122,8 +122,6 @@ fi
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $SCMPORTS -j DSCP --set-dscp-class CS2 \
 	    -m comment --comment 'SCM'
-
-# FIXME: Streaming Ports? Database Ports? What else did I miss?
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $DBPORTS -j DSCP --set-dscp-class AF12 \
@@ -152,10 +150,10 @@ fi
 	    --comment 'Bandwidth Tests'
 # There is no codepoint for torrent. Perhaps we need to invent one
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $P2PPORTS -j DSCP --set-dscp-class CS1 -m comment \
+	    --ports $P2PPORTS -j DSCP --set-dscp $PTP -m comment \
 	    --comment 'P2P'
 
-# It would be nice if network radio had not gone tcp, AF3X
+# It would be nice if network radio had not gone port 80, AF3X
 # should probably make these rules separate on a per class basis
 
 	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp --syn -j DSCP \
@@ -221,6 +219,7 @@ dscp_icmpv6_stats() {
 
 # Classify Diffserv marked packets into the right 802.11e buckets
 # I think I need to set the skb priority field using tc however
+# this sets marks which aren't the same thing?
 
 dscp_80211e() {
     local iptables
@@ -231,9 +230,13 @@ dscp_80211e() {
     do
     dscp_recreate_filter $iptables filter Wireless 
     $iptables -A Wireless -o $device -m dscp --dscp-class CS6 -j CONNMARK --set-mark 261
+    $iptables -A Wireless -o $device -m dscp --dscp-class CS3 -j CONNMARK --set-mark 261
+    $iptables -A Wireless -o $device -m dscp --dscp $MICE -j CONNMARK --set-mark 261
     $iptables -A Wireless -o $device -m dscp --dscp-class CS5 -j CONNMARK --set-mark 263
+    $iptables -A Wireless -o $device -m dscp --dscp $BOFH -j CONNMARK --set-mark 261
     $iptables -A Wireless -o $device -m dscp --dscp-class EF -j CONNMARK --set-mark 263
     $iptables -A Wireless -o $device -m dscp --dscp-class CS1 -j CONNMARK --set-mark 257
+    $iptables -A Wireless -o $device -m dscp --dscp $PTP -j CONNMARK --set-mark 257
     $iptables -A Wireless -o $device -m dscp --dscp-class CS2 -j CONNMARK --set-mark 257
     done
 }
