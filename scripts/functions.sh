@@ -46,7 +46,7 @@ dscp_classify() {
 
 	$iptables -t mangle -A Mice -p udp -m multiport --ports 53,67,68 \
 	    -j DSCP --set-dscp $MICE -m comment \
-	    --comment 'DNS, DHCP, NTP, are very important' 
+	    --comment 'DNS, DHCP, are very important' 
 	$iptables -t mangle -A Mice -p udp -m multiport --ports $SIGNALPORTS \
 	    -j DSCP --set-dscp-class CS5 -m comment \
 	    --comment 'VOIP Signalling'
@@ -55,10 +55,7 @@ dscp_classify() {
 	$iptables -t mangle -A Mice -p udp -m multiport --ports $GAMINGPORTS \
 	    -j DSCP --set-dscp-class CS4 -m comment --comment 'Gaming'
 	$iptables -t mangle -A Mice -p udp -m multiport --ports $MONITORPORTS \
-	    -j DSCP --set-dscp-class CS6 -m comment --comment 'SNMP'
-	$iptables -t mangle -A Mice -p udp -m udp -m multiport \
-	    --ports $GAMINGPORTS -j DSCP --set-dscp-class CS4 \
-	    -m comment --comment 'Gaming'
+	    -j DSCP --set-dscp-class CS2 -m comment --comment 'SNMP'
 
 	if [ "$iptables" = "ip6tables" ]
 	then
@@ -106,10 +103,10 @@ fi
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $XWINPORTS -j DSCP --set-dscp-class CS4 \
 	    -m comment --comment 'Xwindows'
-# Probably incorrect for gaming, which uses udp usually
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $GAMINGPORTS -j DSCP --set-dscp-class CS4 \
 	    -m comment --comment 'Gaming'
+# FIXME: Routing takes place over many protocols
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $ROUTINGPORTS -j DSCP --set-dscp-class CS6 \
 	    -m comment --comment 'Routing'
@@ -119,8 +116,9 @@ fi
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $PROXYPORTS -j DSCP --set-dscp-class AF22 \
 	    -m comment --comment 'Web proxies better for browsing'
+# Arguably want a better class for git. Bulk?
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $SCMPORTS -j DSCP --set-dscp-class CS2 \
+	    --ports $SCMPORTS -j DSCP --set-dscp-class AF13 \
 	    -m comment --comment 'SCM'
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
@@ -129,6 +127,7 @@ fi
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $V_STREAMINGPORTS -j DSCP --set-dscp-class AF43 \
 	    -m comment --comment 'Video Streaming'
+# It would be nice if network radio had not gone port 80, AF3X
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $A_STREAMINGPORTS -j DSCP --set-dscp-class AF41 \
 	    -m comment --comment 'Internet Radio'
@@ -143,7 +142,7 @@ fi
 	    --ports $BACKUPPORTS -j DSCP --set-dscp-class CS3 \
 	    -m comment --comment 'Backups'
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $BULKPORTS -j DSCP --set-dscp-class CS2 \
+	    --ports $BULKPORTS -j DSCP --set-dscp-class CS1 \
 	    -m comment --comment 'BULK'
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $TESTPORTS -j DSCP --set-dscp-class CS1 -m comment \
@@ -153,14 +152,23 @@ fi
 	    --ports $P2PPORTS -j DSCP --set-dscp $P2P -m comment \
 	    --comment 'P2P'
 
-# It would be nice if network radio had not gone port 80, AF3X
-# should probably make these rules separate on a per class basis
+# I like the concept of ENC - expedite new connections.
+# Syn and syn/acks are mice and dropping them hurts... but 
+# It needs a little more thought.
+# For example, a 32k bucket for new connections would likely be
+# larger than ever needed by most anybody, and a hard limiter
+# kind of good...
 
-	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp --syn -j DSCP \
-	    --set-dscp-class AF21 -m comment --comment 'Expedite new connections' 
-	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp \
-	    --tcp-flags ALL SYN,ACK -j DSCP --set-dscp-class AF21 \
-	    -m comment --comment 'Expedite new connection ack' 
+# A problem lies in so mangling the outgoing packet
+# which may think the DSCP class is the requested one, and keep it.
+
+# Also a codepoint for this would be something like CS4 + MMC
+
+#	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp --syn -j DSCP \
+#	    --set-dscp-class AF21 -m comment --comment 'Expedite new connections' 
+#	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp \
+#	    --tcp-flags ALL SYN,ACK -j DSCP --set-dscp-class AF21 \
+#	    -m comment --comment 'Expedite new connection ack' 
 
 # FIXME: Maybe make ECN enabled streams mildly higher priority. 
 # This just counts the number of ECN and non-ECN streams
