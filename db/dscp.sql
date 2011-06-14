@@ -89,7 +89,52 @@ insert into diffserv values ('LB',63);
 insert into diffserv values ('MICE',42);
 insert into diffserv values ('P2P',33); -- CS1 | RELI should be WORSE than CS1
 
+create view diffserv_v as 
+       select id, cp, to_hex(cp::integer) cp_hex,
+       	      cp::integer::bit(6) as cp_bit 
+	      from diffserv; 
 
+create view diffserv_prio_v as 
+       select id,cp,cp_hex,cp_bit::bit(3) as prio 
+              from diffserv_v;
 
-create view diffserv_v as select id, cp, to_hex(cp::integer) cp_hex,cp::integer::bit(6) as cp_bit from diffserv; 
+drop table mac80211e_map cascade;
 
+create table mac80211e_map (
+       id varchar(2) not null, 
+       cp smallint check (cp > -1 and cp < 8), 
+       primary key(cp));
+
+drop table mac8021d_map cascade;
+
+create table mac8021d_map(
+       id varchar(2) not null, 
+       cp smallint check (cp > -1 and cp < 8), 
+       description varchar(40), 
+       priority smallint check (priority > -1 and priority < 8),
+       primary key(cp));
+
+insert into mac80211e_map values('BE',0);
+insert into mac80211e_map values('VO',1);
+insert into mac80211e_map values('VO',2);
+insert into mac80211e_map values('BE',3);
+insert into mac80211e_map values('VI',4);
+insert into mac80211e_map values('VI',5);
+insert into mac80211e_map values('BK',6);
+insert into mac80211e_map values('BK',7);
+
+insert into mac8021d_map values('BK',1,'Background',0);
+insert into mac8021d_map values('BE',0,'Best Effort',1);
+insert into mac8021d_map values('EE',2,'Excellent Effort',2);
+insert into mac8021d_map values('CR',3,'Critical Applications',3);
+insert into mac8021d_map values('VI',4,'Video sub 100ms latency',4);
+insert into mac8021d_map values('VO',5,'Audio sub 10ms latency',5);
+insert into mac8021d_map values('IC',6,'Internetwork Control',6);
+insert into mac8021d_map values('NC',7,'Network Control',7);
+
+-- gotta think about these
+-- create view d2e_map as select 
+-- create view e2d_map
+
+-- so I can ultimately get to figuring out how dscp is 
+-- currently mapping to wireless
