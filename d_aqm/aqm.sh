@@ -1,5 +1,6 @@
 #!/bin/sh -x
 
+KVER=$(uname -r)
 insmod /lib/modules/$KVER/sch_dsmark.o
 insmod /lib/modules/$KVER/cls_tcindex.o
 insmod /lib/modules/$KVER/sch_htb.o

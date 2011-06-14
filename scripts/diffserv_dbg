@@ -1,5 +1,6 @@
 #!/bin/sh
 #Debug code in place
+. ./codepoints.sh
 . ./functions.sh
 . ./diffserv.conf
 

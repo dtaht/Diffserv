@@ -1,5 +1,6 @@
 #!/bin/sh
 # OpenWrt Version
+. /usr/lib/diffserv/codepoints.sh
 . /usr/lib/diffserv/functions.sh
 . /etc/diffserv.conf
 
