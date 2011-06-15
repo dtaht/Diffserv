@@ -1,6 +1,13 @@
 -- RCC: Really Comprehensive Classifier
 
 create domain diffserv_t as varchar(4) default 'BE' NOT NULL;
+create domain priority_t as smallint check (value between -1 and 8); 
+create domain cwin_t smallint check (value between -1 and 1024); 
+create domain aifsn_t smallint check (value between -1 and 1024); 
+create domain max_txop_t interval;
+create domain codepoint_t smallint check (value between -1 and 64);
+create domain description_t varchar(40);
+create domain service_t varchar(4);
 
 drop table diffserv cascade;
 
@@ -48,7 +55,7 @@ drop table diffserv cascade;
 
 create table diffserv (
        id diffserv_t,
-       cp smallint check (cp > -1 AND cp < 64),
+       cp codepoint_t,
        primary key(id), unique(cp));
 
 -- copy the diffserv table for tos
@@ -98,21 +105,37 @@ create view diffserv_prio_v as
        select id,cp,cp_hex,cp_bit::bit(3) as prio 
               from diffserv_v;
 
+create view diffserv_tos_v as 
+       select id,cp,cp_hex,(cp_bit::bit(6) << 3)::bit(3) as prio 
+              from diffserv_v;
+
 drop table mac80211e_map cascade;
 
 create table mac80211e_map (
-       id varchar(2) not null, 
-       cp smallint check (cp > -1 and cp < 8), 
+       id service_t,
+       cp priority_t,
+       priority priority_t,
+       description description_t,
        primary key(cp));
 
 drop table mac8021d_map cascade;
 
 create table mac8021d_map(
-       id varchar(2) not null, 
-       cp smallint check (cp > -1 and cp < 8), 
-       description varchar(40), 
-       priority smallint check (priority > -1 and priority < 8),
+       id service_t,
+       cp priority_t,
+       priority priority_t,
+       description description_t,
        primary key(cp));
+
+create table edca_map(
+       ac service_t, 
+       cwmin cwin_t,
+       cwmax cwin_t,
+       aifsn aifsn_t,
+       max_txop max_txop_t,
+       priority priority_t,
+       description description_t, 
+       primary key(ac));
 
 insert into mac80211e_map values('BE',0);
 insert into mac80211e_map values('VO',1);
@@ -123,14 +146,14 @@ insert into mac80211e_map values('VI',5);
 insert into mac80211e_map values('BK',6);
 insert into mac80211e_map values('BK',7);
 
-insert into mac8021d_map values('BK',1,'Background',0);
-insert into mac8021d_map values('BE',0,'Best Effort',1);
-insert into mac8021d_map values('EE',2,'Excellent Effort',2);
-insert into mac8021d_map values('CR',3,'Critical Applications',3);
-insert into mac8021d_map values('VI',4,'Video sub 100ms latency',4);
-insert into mac8021d_map values('VO',5,'Audio sub 10ms latency',5);
-insert into mac8021d_map values('IC',6,'Internetwork Control',6);
-insert into mac8021d_map values('NC',7,'Network Control',7);
+insert into mac8021d_map values('BK',1,0,'Background');
+insert into mac8021d_map values('BE',0,1,'Best Effort');
+insert into mac8021d_map values('EE',2,2,'Excellent Effort');
+insert into mac8021d_map values('CR',3,3,'Critical Applications');
+insert into mac8021d_map values('VI',4,4,'Video sub 100ms latency');
+insert into mac8021d_map values('VO',5,5,'Audio sub 10ms latency');
+insert into mac8021d_map values('IC',6,6,'Internetwork Control');
+insert into mac8021d_map values('NC',7,7,'Network Control');
 
 -- gotta think about these
 -- create view d2e_map as select 
@@ -139,6 +162,8 @@ insert into mac8021d_map values('NC',7,'Network Control',7);
 -- so I can ultimately get to figuring out how dscp is 
 -- currently mapping to wireless
 
-create view dscp_8021d_v as select d.id as id, d.cp as cp ,d.prio as prio ,m.id as mac8021d_prio 
+-- And this is still wrong, or so I hope.
+
+create view dscp_8021d_v as select d.id as id, d.cp as cp, d.prio as prio ,m.id as mac8021d_prio 
               from diffserv_prio_v d, mac8021d_map m 
 	      where d.prio::integer = m.priority;
