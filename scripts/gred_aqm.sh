@@ -1,11 +1,12 @@
 #!/bin/sh -x
 
+
 KVER=$(uname -r)
-insmod /lib/modules/$KVER/sch_dsmark.o
-insmod /lib/modules/$KVER/cls_tcindex.o
-insmod /lib/modules/$KVER/sch_htb.o
-insmod /lib/modules/$KVER/sch_gred.o
-insmod /lib/modules/$KVER/sch_red.o
+insmod /lib/modules/$KVER/sch_dsmark.ko
+insmod /lib/modules/$KVER/cls_tcindex.ko
+insmod /lib/modules/$KVER/sch_htb.ko
+insmod /lib/modules/$KVER/sch_gred.ko
+insmod /lib/modules/$KVER/sch_red.ko
 
 interface=eth0
 rate=15Mbit
@@ -14,13 +15,19 @@ ceil=15Mbit
 qrate=1500Kbit
 
 limit=128KB
-min=20KB
+min=10KB
 max=60KB
 
 burst=20
 avpkt=1000
 
 bandwidth=15Mbit
+
+aqm_clear() {
+
+tc qdisc del dev $interface root
+
+}
 
 # Creating tcindex table
 # Interestingly we could treat ecn packets differently if we wanted to
@@ -62,7 +69,7 @@ tc filter add dev $interface parent 2:0 protocol ip prio 1 tcindex mask 0xf0 shi
 
 # AF class 1
 tc class add dev $interface parent 2:1 classid 2:10 htb rate $qrate ceil $ceil
-tc qdisc add dev $interface parent 2:10 gred setup DPs 3 default 2 grio
+tc qdisc add dev $interface parent 2:10 gred setup DPs 4 default 2 grio
 tc filter add dev $interface parent 2:0 protocol ip prio 1 handle 1 tcindex classid 2:10
 # AF Class 11
 tc qdisc change dev $interface parent 2:10 gred limit $limit min $min max $max burst $burst avpkt $avpkt bandwidth $bandwidth DP 1 probability 0.02 prio 2
@@ -73,7 +80,7 @@ tc qdisc change dev $interface parent 2:10 gred limit $limit min $min max $max b
 
 # AF Class 2
 tc class add dev $interface parent 2:1 classid 2:20 htb rate $qrate ceil $ceil
-tc qdisc add dev $interface parent 2:20 gred setup DPs 3 default 2 grio
+tc qdisc add dev $interface parent 2:20 gred setup DPs 4 default 2 grio
 tc filter add dev $interface parent 2:0 protocol ip prio 1 handle 2 tcindex classid 2:20
 # AF Class 21
 tc qdisc change dev $interface parent 2:20 gred limit $limit min $min max $max burst $burst avpkt $avpkt bandwidth $bandwidth DP 1 probability 0.02 prio 2
@@ -84,7 +91,7 @@ tc qdisc change dev $interface parent 2:20 gred limit $limit min $min max $max b
 
 # AF Class 3
 tc class add dev $interface parent 2:1 classid 2:30 htb rate $qrate ceil $ceil
-tc qdisc add dev $interface parent 2:30 gred setup DPs 3 default 2 grio
+tc qdisc add dev $interface parent 2:30 gred setup DPs 4 default 2 grio
 tc filter add dev $interface parent 2:0 protocol ip prio 1 handle 3 tcindex classid 2:30
 # AF Class 31
 tc qdisc change dev $interface parent 2:30 gred limit $limit min $min max $max burst $burst avpkt $avpkt bandwidth $bandwidth DP 1 probability 0.02 prio 2
@@ -95,7 +102,8 @@ tc qdisc change dev $interface parent 2:30 gred limit $limit min $min max $max b
 
 # AF Class 4
 
-tc class add dev $interface parent 2:1 classid 2:40 htb rate $qrate ceil $ceil tc qdisc add dev $interface parent 2:40 gred setup DPs 3 default 2 grio
+tc class add dev $interface parent 2:1 classid 2:40 htb rate $qrate ceil $ceil
+tc qdisc add dev $interface parent 2:40 gred setup DPs 4 default 2 grio
 tc filter add dev $interface parent 2:0 protocol ip prio 1 handle 4 tcindex classid 2:40
 # AF Class 41
 tc qdisc change dev $interface parent 2:40 gred limit $limit min $min max $max burst $burst avpkt $avpkt bandwidth $bandwidth DP 1 probability 0.02 prio 2
@@ -118,6 +126,6 @@ tc filter add dev $interface parent 2:0 protocol ip prio 1 handle 5 tcindex clas
 }
 
 
-
+aqm_clear
 aqm_dscp_table
 aqm_shaper
