@@ -17,28 +17,53 @@ dscp_classify() {
     local iptables
     for iptables in iptables ip6tables
     do
+	dscp_recreate_filter $iptables mangle STATS_ECN
+	dscp_recreate_filter $iptables mangle BIMODAL
+	dscp_recreate_filter $itpables mangle SYN_EXPEDITE
 	dscp_recreate_filter $iptables mangle Mice_END
 	dscp_recreate_filter $iptables mangle Mice
 	dscp_recreate_filter $iptables mangle D_CLASSIFIER_END
 	dscp_recreate_filter $iptables mangle D_CLASSIFIER 
 
 # I'm not certain this is a good idea, but the initial syn and syn/ack is a mouse.
+# as are fins and fin/acks, sorta. And we usually do interesting stuff on syns
 
-	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp --syn -j DSCP \
+	$iptables -t mangle -A SYN_EXPEDITE -p tcp -m tcp --syn -j DSCP \
 	    --set-dscp-class AF21 -m comment --comment 'Expedite new connections' 
-	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp --tcp-flags ALL SYN,ACK -j DSCP \
+	$iptables -t mangle -A SYN_EXPEDITE -p tcp -m tcp --tcp-flags ALL SYN,ACK -j DSCP \
 	    --set-dscp-class AF21 -m comment --comment 'Expedite new connection ack' 
 
 # FIXME: Maybe make ECN enabled streams mildly higher priority. 
 # This just counts the number of ECN and non-ECN streams
 # FIXME: Also mark against IP not TCP
 
-	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp \
+	$iptables -t mangle -A STATS_ECN -p tcp -m tcp \
 	    --tcp-flags ALL SYN,ACK -m ecn --ecn-tcp-ece -m recent \
-	--name ecn_enabled --set -m comment --comment 'ECN enabled streams' 
-	$iptables -t mangle -A D_CLASSIFIER_END -p tcp -m tcp \
+	--name ecn_enabled --set -m comment --comment 'ECN enabled' 
+	$iptables -t mangle -A STATS_ECN -p tcp -m tcp \
 	    --tcp-flags ALL SYN,ACK -m ecn ! --ecn-tcp-ece -m recent \
-	    --name ecn_disabled --set -m comment --comment 'ECN disabled streams' 
+	    --name ecn_disabled --set -m comment --comment 'ECN disabled' 
+
+# FIXME: SSH rule needs to distinguish between interactive and bulk sessions
+# Actually simply codifying current practice (0x04, I think or 2?) would be
+# Better. Call it the 'IT' field. Interactive Text. BOFH works too.
+
+# So we need match if the interactive bit is set
+# And if not set, toss it in bulk
+
+# FIXME: maybe be more clever here and just check for interactive bit
+#        rather than the whole field
+
+	$iptables -t mangle -A BIMODAL -p tcp -m tcp -m multiport \
+	    --ports $INTERACTIVEPORTS -m dscp --dscp $BOFH \
+	    -m comment --comment 'SSH Interactive'
+
+	$iptables -t mangle -A BIMODAL -p tcp -m tcp -m multiport \
+	    --ports $INTERACTIVEPORTS -m dscp ! --dscp $BOFH \
+	    -j DSCP --set-dscp-class CS1 \
+	    -m comment --comment 'SSH Bulk'
+
+# FIXME: Multiple other flows are also bimodal
 
 # not sure if this matches dhcp actually
 # And we should probably have different classes for multicast vs non multicast
@@ -92,13 +117,11 @@ fi
 
 	$iptables -t mangle -A D_CLASSIFIER ! -p tcp -g Mice
 
-# FIXME: SSH rule needs to distinguish between interactive and bulk sessions
-# Actually simply codifying current practice (0x04, I think or 2?) would be
-# Better. Call it the 'IT' field. Interactive Text. BOFH works too.
+# SSH is bimodal inside a connection
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $INTERACTIVEPORTS -j DSCP --set-dscp $BOFH \
-	    -m comment --comment 'SSH'
+	    --ports $INTERACTIVEPORTS -j BIMODAL -m comment --comment 'SSH'
+
 # CS4 for Xwin almost makes sense
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $XWINPORTS -j DSCP --set-dscp-class CS4 \
@@ -317,12 +340,20 @@ dscp_clean() {
 	iptables -t mangle -F
 }
 
+
+
 dscp_finalize() {
     for iptables in iptables ip6tables
     do
 # Not quite convinced this is right
+	dscp_recreate_filter $iptables mangle SYNS
+# FIXME: Expedite has issues at this layer
+#	$iptables -t mangle -A SYNS -j SYN_EXPEDITE 
+	$iptables -t mangle -A SYNS -j STATS_ECN
+	$iptables -t mangle -A PREROUTING -j SYNS
 	$iptables -t mangle -A PREROUTING -j D_CLASSIFIER
 	$iptables -t mangle -A PREROUTING -j D_CLASSIFIER_END
+	$iptables -t mangle -A OUTPUT -j SYNS
 	$iptables -t mangle -A OUTPUT -j D_CLASSIFIER
 	$iptables -t mangle -A OUTPUT -j D_CLASSIFIER_END
 	$iptables -A OUTPUT -j Wireless

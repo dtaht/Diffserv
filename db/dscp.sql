@@ -225,3 +225,7 @@ create view dscp_8021d_v as select d.id as id, d.cp as cp, d.prio as prio ,m.id 
               from diffserv_prio_v d, mac8021d_map m 
 	      where d.prio::integer = m.priority;
 
+
+create view dscp_80211e_v as select d.id as id, d.cp as cp, d.prio as prio ,m.id as mac80211e_prio 
+              from diffserv_prio_v d, mac80211e_map m 
+	      where d.prio::integer = m.priority;
