@@ -1,5 +1,11 @@
 # Functions for classifying packets into DIFFSERV buckets
 
+# Note: full ipv6 support requires a netfilter patch for ecn
+# Also, there a bug that completely disables ipv6 tos handling
+# in netfilter...
+# fixed in 2.6.39 commit 1ed2f73d90fb49bcf5704aee7e9084adb882bfc5
+
+
 dscp_recreate_filter() {
     local iptables=$1
     local filter=$2
@@ -95,6 +101,22 @@ dscp_classify() {
 	    $iptables -t mangle -A Mice -s fe80::/10 -d ff00::/12 \
 		-j DSCP --set-dscp $MICE \
 		-m comment --comment 'But link local multicast is good'
+
+# And we really want babel and ahcp to try to get through
+	    $iptables -t mangle -A Mice -s fe80::/10 -d ff00::/12 \
+		-p udp \
+		-m multiport --port 6697,5359 \
+		-j DSCP --set-dscp-class CS6 \
+		-m comment --comment 'Babel, AHCP'
+
+# FIXME: Multicast ntp is also important. multicast address?
+# FIXME: Perhaps we can downshift after multiple hops
+
+	    $iptables -t mangle -A Mice -d ff00::/12 \
+		-p udp \
+		-m multiport --port 123 \
+		-j DSCP --set-dscp-class CS6 \
+		-m comment --comment 'Multicast NTP'
 
 # As is neighbor discovery, etc, but I haven't parsed 
 # http://tools.ietf.org/html/rfc4861 well yet
