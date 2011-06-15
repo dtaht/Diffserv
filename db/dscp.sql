@@ -138,3 +138,7 @@ insert into mac8021d_map values('NC',7,'Network Control',7);
 
 -- so I can ultimately get to figuring out how dscp is 
 -- currently mapping to wireless
+
+create view dscp_8021d_v as select d.id as id, d.cp as cp ,d.prio as prio ,m.id as mac8021d_prio 
+              from diffserv_prio_v d, mac8021d_map m 
+	      where d.prio::integer = m.priority;
