@@ -1,15 +1,53 @@
 -- RCC: Really Comprehensive Classifier
 
+-- drop schema public cascade;
+drop schema wireless cascade;
+drop schema network cascade;
+drop schema threats cascade;
+
+-- create schema public;
+create schema wireless;
+create schema network;
+create schema threats;
+
+set search_path = network, wireless, threats, public, pg_catalog;
+
+create domain protocol_t as smallint default 6 not null;
+create domain port_t as smallint default 0 not null;
+create domain name_t as varchar(20);
 create domain diffserv_t as varchar(4) default 'BE' NOT NULL;
 create domain priority_t as smallint check (value between -1 and 8); 
 create domain cwin_t smallint check (value between -1 and 1024); 
 create domain aifsn_t smallint check (value between -1 and 1024); 
-create domain max_txop_t interval;
+create domain max_txop_t float; -- time value in ms
 create domain codepoint_t smallint check (value between -1 and 64);
 create domain description_t varchar(40);
 create domain service_t varchar(4);
 
-drop table diffserv cascade;
+create table protocols (
+       id smallint not null,
+       proto_name name_t,
+       description description_t,
+       primary key(id));
+
+create table port_map (
+       port port_t,
+       port_type smallint references protocols(id),
+       primary key(port)
+);
+
+
+-- create table threat_port_map (
+--       port port_t,
+--       port_type smallint references protocols.id,
+-- );
+
+create view tcp_port_map as 
+       select port from port_map where port_type = 6;
+
+-- Some data sources
+
+-- drop table diffserv cascade;
 
 -- from /etc/iproute2
 -- 
@@ -57,6 +95,13 @@ create table diffserv (
        id diffserv_t,
        cp codepoint_t,
        primary key(id), unique(cp));
+
+create table mac8021d_map(
+       id service_t not null,
+       cp priority_t not null,
+       priority priority_t,
+       description description_t,
+       primary key(id));
 
 -- copy the diffserv table for tos
 
@@ -109,23 +154,14 @@ create view diffserv_tos_v as
        select id,cp,cp_hex,(cp_bit::bit(6) << 3)::bit(3) as prio 
               from diffserv_v;
 
-drop table mac80211e_map cascade;
+set search_path = wireless, network, threats, public, pg_catalog;
 
 create table mac80211e_map (
        id service_t,
        cp priority_t,
        priority priority_t,
        description description_t,
-       primary key(cp));
-
-drop table mac8021d_map cascade;
-
-create table mac8021d_map(
-       id service_t,
-       cp priority_t,
-       priority priority_t,
-       description description_t,
-       primary key(cp));
+       primary key(cp), unique(id));
 
 create table edca_map(
        ac service_t, 
@@ -137,14 +173,16 @@ create table edca_map(
        description description_t, 
        primary key(ac));
 
-insert into mac80211e_map values('BE',0);
-insert into mac80211e_map values('VO',1);
-insert into mac80211e_map values('VO',2);
-insert into mac80211e_map values('BE',3);
-insert into mac80211e_map values('VI',4);
-insert into mac80211e_map values('VI',5);
-insert into mac80211e_map values('BK',6);
-insert into mac80211e_map values('BK',7);
+insert into edca_map VALUES('BK',31,1023,7,0,0,'Background');
+insert into edca_map VALUES('BE',31,1023,3,0,1,'Best Effort');
+insert into edca_map VALUES('VI',15,31,2,3.008,2,'Video 3ms');
+insert into edca_map VALUES('VO',7,15,2,1.5004,3,'Voice 1.5ms');
+insert into edca_map VALUES('DCF',15,1023,2,0,1,'Legacy DCF');
+
+insert into mac80211e_map values('BK',0);
+insert into mac80211e_map values('BE',1);
+insert into mac80211e_map values('VI',3);
+insert into mac80211e_map values('VO',4);
 
 insert into mac8021d_map values('BK',1,0,'Background');
 insert into mac8021d_map values('BE',0,1,'Best Effort');
@@ -156,14 +194,34 @@ insert into mac8021d_map values('IC',6,6,'Internetwork Control');
 insert into mac8021d_map values('NC',7,7,'Network Control');
 
 -- gotta think about these
--- create view d2e_map as select 
+create table d2e_map (
+       d_prio priority_t,
+       d_map service_t references mac8021d_map(id), 
+       e_prio priority_t,
+       e_map service_t references mac80211e_map(id),
+       primary key(d_prio));
+
+-- This is currently wrong, find source
+
+insert into d2e_map values (0,'BE',1,'BE');
+insert into d2e_map values (1,'BK',0,'BK');
+insert into d2e_map values (2,'EE',0,'BK');
+insert into d2e_map values (3,'CR',1,'BE');
+insert into d2e_map values (4,'VI',2,'VI');
+insert into d2e_map values (5,'VO',3,'VO');
+insert into d2e_map values (6,'IC',3,'VO');
+insert into d2e_map values (7,'NC',3,'VO');
+
 -- create view e2d_map
 
 -- so I can ultimately get to figuring out how dscp is 
 -- currently mapping to wireless
+
+-- HCCA?
 
 -- And this is still wrong, or so I hope.
 
 create view dscp_8021d_v as select d.id as id, d.cp as cp, d.prio as prio ,m.id as mac8021d_prio 
               from diffserv_prio_v d, mac8021d_map m 
 	      where d.prio::integer = m.priority;
+
