@@ -1,0 +1,71 @@
+* Some design notes on the gateway
+** Traffic buckets
+
+CS6 traffic 32KB/sec - VI
+MICE traffic should generally be less than 64KB/sec - that's around 300
+packets VI
+VOIP - worst case, is about 64KB/raw + overhead. Usually. Now we have
+HQ voice, etc, which is a problem VO
+We can reserve X% of the bandwidth for that, then inherit
+
+We reclassify LB into BE
+
+You should get no CS7 traffic on ingress, period.
+
+I think DNS deserves it's own class at this point
+Also multicast can be accomidated better if it ends up in it's own class.
+
+AF11-AF43 is 12 buckets. We have 16 with gred: 
+
+CS1 gets what's left over 
+from everything else 
+PTP gets what's left over from that
+
+This leaves BE,CS2,3,4,5
+
+CS3 ends up in video, darn it
+CS7 
+
+** Be smarter
+
+Now, we need to be smarter about figuring out what we are talking to.
+
+detect link speed somehow. Use ethtool
+
+* Internal wired interfaces
+
+  Prioritization + WFQ will ease the load on the switch
+
+* Internal wireless
+**  Figure out from the environment what is supported...
+    Total bandwidth available from each radio
+    Gmostly,Bmostly,Nmostly (54Mbit,11Mbit,and figure it from antennas
+    and HT20, HT40, etc)
+
+    Figure out the multicast rate
+    maybe there could be such a thing as a 'null' packet of X length
+    to fool the qdiscs
+    'weight'
+	DFQ - dynamic fair queuing
+	RATE_LIMIT=20
+	
+    HTB class for each RADIO to pull from
+        each interface pulls from the HTB class
+	Try to be fair
+	adhoc seems limited to 54Mbit at present regardless of N
+
+It sucks to not have arrays
+
+RADIOS=2
+RADIO0=Gmostly
+RADIO1=Nmostly
+
+** Use 802.11e
+   after sorting stuff into various buckets
+** SW Retransmits
+   Make them smarter - various buckets are ok to drop, and others
+   could be marked.
+
+* MISC
+  IFB needs to be increased by default
+  having some way to signal a syn from an ack would be good
