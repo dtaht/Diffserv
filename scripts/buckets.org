@@ -1,0 +1,43 @@
+* Some design notes on the gateway
+** Traffic buckets
+
+CS6 traffic 32KB/sec - VI
+MICE traffic should generally be less than 64KB/sec - that's around 300
+packets VI
+VOIP - worst case, is about 64KB/raw + overhead. Usually. Now we have
+HQ voice, etc, which is a problem VO
+We can reserve X% of the bandwidth for that, then inherit
+
+We reclassify LB into BE
+
+You should get no CS7 traffic on ingress, period.
+
+I think DNS deserves it's own class at this point
+Also multicast can be accomidated better if it ends up in it's own class.
+
+AF11-AF43 is 12 buckets. We have 16 with gred: 
+
+CS1 gets what's left over 
+from everything else 
+PTP gets what's left over from that
+
+This leaves BE,CS2,3,4,5
+
+CS3 ends up in video, darn it
+CS7 
+
+** Be smarter
+
+Now, we need to be smarter about figuring out what we are talking to.
+
+detect link speed somehow. Use ethtool
+
+* Internal wired interfaces
+
+Prioritization + WFQ 
+
+* Internal wireles
+
+Figure out from the environment what is supported...
+	DFQ
+	RATE_LIMIT=20
