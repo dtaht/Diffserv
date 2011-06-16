@@ -1,0 +1,24 @@
+tc qdisc add dev eth0 root handle 1: multiq
+
+http://www.mjmwired.net/kernel/Documentation/networking/multiqueue.txt
+
+57	The qdisc will allocate the number of bands to equal the number of queues that
+58	the device reports, and bring the qdisc online.  Assuming eth0 has 4 Tx
+59	queues, the band mapping would look like:
+60	
+61	band 0 => queue 0
+62	band 1 => queue 1
+63	band 2 => queue 2
+64	band 3 => queue 3
+65	
+66	Traffic will begin flowing through each queue based on either the simple_tx_hash
+67	function or based on netdev->select_queue() if you have it defined.
+68	
+69	The behavior of tc filters remains the same.  However a new tc action,
+70	skbedit, has been added.  Assuming you wanted to route all traffic to a
+71	specific host, for example 192.168.0.3, through a specific queue you could use
+72	this action and establish a filter such as:
+73	
+74	tc filter add dev eth0 parent 1: protocol ip prio 1 u32 \
+75		match ip dst 192.168.0.3 \
+76		action skbedit queue_mapping 3
