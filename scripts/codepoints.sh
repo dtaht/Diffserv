@@ -17,12 +17,44 @@ AF42=36
 AF43=38
 EF=46
 
+CS1=8
+CS2=16
+CS3=24
+CS4=32
+CS5=40
+CS6=48
+CS7=56
+
 # Some new (proposed) codepoints
 
-BOFH=04
+BOFH=4
 MICE=42
 LB=63
 P2P=9
+
+# Some legacy codepoints
+# FIXME, do common tos bits and cisco
+
+# FIXME, get CS fixed
+
+KNOWN_CODEPOINTS="0 4 9 10 12 14 18 20 22 26 28 30 34 36 38 42 46 63 8 16 24 32 40 48 56"
+UNKNOWN_CODEPOINTS=""
+
+for i in `seq 1 63`
+do 
+    FOUND=0
+    for j in $KNOWN_CODEPOINTS
+    do
+	if [ "$i" = "$j" ] 
+	    then
+	    FOUND=1
+	fi
+    done
+    if [ $FOUND = 0 ]
+	then
+	UNKNOWN_CODEPOINTS="$UNKNOWN_CODEPOINTS $i"
+    fi
+done
 
 #    This is the relevant table from the RFC
 #    |===============+=========+=============+==========================|

@@ -5,6 +5,7 @@
 . ./diffserv.conf
 
 DEBUG_LOG=/tmp/diffserv.$$
+ROBUST_STATS=1
 
 case $1 in 
     up) dscp_start ;;

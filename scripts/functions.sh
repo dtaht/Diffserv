@@ -2,7 +2,7 @@
 
 # Note: full ipv6 support requires a netfilter patch for ecn
 # Also, there a bug that completely disables ipv6 tos handling
-# in netfilter...
+# in netfilter... and I'm still not confident it's actually fixed
 # fixed in 2.6.39 commit 1ed2f73d90fb49bcf5704aee7e9084adb882bfc5
 
 
@@ -13,6 +13,54 @@ dscp_recreate_filter() {
     $iptables -t $filter -F $chain 2> $DEBUG_LOG
     $iptables -t $filter -X $chain 2> $DEBUG_LOG
     $iptables -t $filter -N $chain 2> $DEBUG_LOG
+}
+
+# On site ingress, stomp on the existing DSCP bits
+# A saner policer might try to at least preserve the EF
+# bits, and merely stomp on LB and CS7 bits
+
+# Note that *not* doing this introduces a problem (again) with ssh
+# interactive traffic and also vpns.
+
+dscp_site_ingress() {
+    local IFACE=$1
+    local iptables
+    for iptables in iptables ip6tables
+    do
+	$iptables -i $IFACE -A INGRESS -m dscp --dscp-class $LB -j DSCP --set-dscp-class BE
+	$iptables -i $IFACE -A INGRESS -m dscp --dscp-class CS7 -j DSCP --set-dscp-class BE
+	# There is no easy way to mark codepoints that you aren't using back 
+	# into something sane. A syntax like ! --dscp-map-class CP,CP,CP,CP,CP
+	# would be helpful, as with a single 64 bit mask we could reclassify
+	# something in 2 rules rather than 64
+	# (also useful would be to use unassigned codepoints above, too)
+	# It is very amusing most web traffic is CS1
+	# So we drop everything else into a BE catagory 
+	# processing, for now...
+	for i in $UNKNOWN_CODEPOINTS
+	do
+	$iptables -i $IFACE -A INGRESS -m dscp --dscp $i -j DSCP --set-dscp-class BE
+	done
+    done
+}
+
+# I thought it would be interesting to see what the beleagured
+# sysadmins of the world were doing to try and wedge every form
+# of communication through port 80 so I wrote this.
+
+# It turned out that nearly all web traffic was not BE, but CS1.
+
+# In the future...
+# It may be useful to allow certain classes in without filtering.
+
+dscp_p80_rathole() {
+    local iptables=$1
+    dscp_recreate_filter $iptables mangle P80RATHOLE 
+    for i in `seq 0 63`
+    do
+	$iptables -t mangle -A P80RATHOLE -m dscp --dscp $i \
+	    -m recent --name p80_$i --set
+    done
 }
 
 # I am not sure why I used tcp and udp distinctions. 
@@ -51,7 +99,7 @@ dscp_classify() {
 	    --name ecn_disabled --set -m comment --comment 'ECN disabled' 
 
 # FIXME: SSH rule needs to distinguish between interactive and bulk sessions
-# Actually simply codifying current practice (0x04, I think or 2?) would be
+# Actually simply codifying current practice (0x04) would be
 # Better. Call it the 'IT' field. Interactive Text. BOFH works too.
 
 # So we need match if the interactive bit is set
@@ -155,6 +203,12 @@ fi
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $ROUTINGPORTS -j DSCP --set-dscp-class CS6 \
 	    -m comment --comment 'Routing'
+
+	dscp_p80_rathole $iptables
+
+	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	    --ports $BROWSINGPORTS -j P80RATHOLE
+
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $BROWSINGPORTS -j DSCP --set-dscp-class AF23 \
 	    -m comment --comment 'BROWSING'
@@ -238,41 +292,41 @@ dscp_icmpv6() {
 
 dscp_icmpv6_stats() {
     dscp_recreate_filter ip6tables filter ICMP6_STATS
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 1 -m comment --comment 'dest unreachable'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 2 -m comment --comment 'packet too big'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 3 -m comment --comment 'parameter problem'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 128 -m comment --comment 'ping'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 129 -m comment --comment 'pong'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 130 -m comment --comment 'Group Membership query'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 131 -m comment --comment 'Group Membership report'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 132 -m comment --comment 'Group Membership Reduciton'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 133 -m comment --comment 'Router Solicitation'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 134 -m comment --comment 'Router Advertisement'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 135 -m comment --comment 'Neighbor Solicitation'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 136 -m comment --comment 'Neighbor Advertisement'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 137 -m comment --comment 'Redirect'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 138 -m comment --comment 'Router Renumbering'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 139 -m comment --comment 'Node info query'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 140 -m comment --comment 'Node info response'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 141 -m comment --comment 'Inverse NDS'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 142 -m comment --comment 'Inverse ADV'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 143 -m comment --comment 'MLDv2 Listener Report'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 144 -m comment --comment 'Home agent disc req'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 145 -m comment --comment 'Home agent reply'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 146 -m comment --comment 'Mobile prefix solicit'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 147 -m comment --comment 'Mobile prefix Adv'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 148 -m comment --comment 'Cert path solicit'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 149 -m comment --comment 'Cert path Adv'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 150 -m comment --comment 'Experimental mobility'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 151 -m comment --comment 'MRD advertisment'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 152 -m comment --comment 'MRD Solicitation'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 153 -m comment --comment 'MRD Termination'
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 154 -m comment --comment 'FMIPv6'
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 1 -m comment --comment 'dest unreachable' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 2 -m comment --comment 'packet too big' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 3 -m comment --comment 'parameter problem' 
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 128 -m comment --comment 'ping' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 129 -m comment --comment 'pong' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 130 -m comment --comment 'Group Membership query' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 131 -m comment --comment 'Group Membership report' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 132 -m comment --comment 'Group Membership Reduciton' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 133 -m comment --comment 'Router Solicitation' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 134 -m comment --comment 'Router Advertisement' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 135 -m comment --comment 'Neighbor Solicitation' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 136 -m comment --comment 'Neighbor Advertisement' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 137 -m comment --comment 'Redirect' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 138 -m comment --comment 'Router Renumbering' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 139 -m comment --comment 'Node info query' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 140 -m comment --comment 'Node info response' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 141 -m comment --comment 'Inverse NDS' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 142 -m comment --comment 'Inverse ADV' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 143 -m comment --comment 'MLDv2 Listener Report' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 144 -m comment --comment 'Home agent disc req' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 145 -m comment --comment 'Home agent reply' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 146 -m comment --comment 'Mobile prefix solicit' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 147 -m comment --comment 'Mobile prefix Adv' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 148 -m comment --comment 'Cert path solicit' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 149 -m comment --comment 'Cert path Adv' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 150 -m comment --comment 'Experimental mobility' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 151 -m comment --comment 'MRD advertisment' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 152 -m comment --comment 'MRD Solicitation' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 153 -m comment --comment 'MRD Termination' -j RETURN
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 154 -m comment --comment 'FMIPv6' 
 }
 
 # Classify Diffserv marked packets into the right 802.11e buckets
 # I think I need to set the skb priority field using tc however
-# this sets marks which aren't the same thing?
+# this sets marks which aren't the same thing.
 
 dscp_80211e() {
     local iptables
@@ -388,7 +442,6 @@ dscp_finalize() {
         ip6tables -A FORWARD -p 58 -s fe80::/10 -j ICMP6
 	ip6tables -A OUTPUT -p 58 -j ICMP6_STATS 
 	ip6tables -A FORWARD -p 58 -j ICMP6_STATS
-
 }
 
 dscp_start() {
