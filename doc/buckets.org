@@ -10,15 +10,16 @@ We can reserve X% of the bandwidth for that, then inherit
 
 We reclassify LB into BE
 
-You should get no CS7 traffic on ingress, period.
+You should get no CS7 traffic on ingress, period. Also BE.
 
 I think DNS deserves it's own class at this point
 Also multicast can be accomidated better if it ends up in it's own class.
 
-AF11-AF43 is 12 buckets. We have 16 with gred: 
+AF11-AF43 is 12 buckets. We have 23 classes defined.
 
-CS1 gets what's left over 
-from everything else 
+We have 16 buckets with gred. Why only 16? Why not 64?
+
+CS1 gets what's left over from everything else 
 PTP gets what's left over from that
 
 This leaves BE,CS2,3,4,5

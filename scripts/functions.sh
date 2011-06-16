@@ -63,6 +63,19 @@ dscp_p80_rathole() {
     done
 }
 
+dscp_WEB() {
+    local iptables=$1
+    dscp_recreate_filter $iptables mangle WEB
+
+# if the vast majority of websites out there want to classify
+# as bulk, let them.
+# Arguably allowing a range here would be good.
+
+    $iptables -t mangle -A WEB -m dscp ! --dscp-class CS1 -j DSCP \  
+        --set-dscp-class AF23 \
+	-m comment --comment 'BROWSING'
+}
+
 # I am not sure why I used tcp and udp distinctions. 
 # would probably have been saner in many cases
 # FIXME: Do other protocols (41,50,51,58) Be thorough.
@@ -205,13 +218,14 @@ fi
 	    -m comment --comment 'Routing'
 
 	dscp_p80_rathole $iptables
+	dscp_WEB $iptables
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $BROWSINGPORTS -j P80RATHOLE
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $BROWSINGPORTS -j DSCP --set-dscp-class AF23 \
-	    -m comment --comment 'BROWSING'
+	    --ports $BROWSINGPORTS -j WEB -m comment --comment 'BROWSING'
+
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $PROXYPORTS -j DSCP --set-dscp-class AF22 \
 	    -m comment --comment 'Web proxies better for browsing'
