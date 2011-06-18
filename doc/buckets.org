@@ -6,7 +6,7 @@ MICE traffic should generally be less than 64KB/sec - that's around 300
 packets VI
 VOIP - worst case, is about 64KB/raw + overhead. Usually. Now we have
 HQ voice, etc, which is a problem VO
-We can reserve X% of the bandwidth for that, then inherit
+We can reserve X% of the bandwidth for that, then inherit from HTB
 
 We reclassify LB into BE
 
@@ -31,11 +31,22 @@ CS7
 
 Now, we need to be smarter about figuring out what we are talking to.
 
-detect link speed somehow. Use ethtool
+Detect link speed somehow. Use ethtool for that.
 
 * Internal wired interfaces
 
   Prioritization + WFQ will ease the load on the switch
+
+* Cope with routing
+** Multicast Monsters
+
+mdnsresponder multiple subnets
+
+224.0.0.251 UDP port 5353. 
+
+http://www.net.princeton.edu/filters/mdns.html
+
+Deprioritizing multicast (AND DROPPING IT) is a good idea
 
 * Internal wireless
 **  Figure out from the environment what is supported...

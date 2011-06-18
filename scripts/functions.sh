@@ -71,7 +71,7 @@ dscp_WEB() {
 # as bulk, let them.
 # Arguably allowing a range here would be good.
 
-    $iptables -t mangle -A WEB -m dscp ! --dscp-class CS1 -j DSCP \  
+    $iptables -t mangle -A WEB -m dscp ! --dscp-class CS1 -j DSCP \
         --set-dscp-class AF23 \
 	-m comment --comment 'BROWSING'
 }
@@ -190,7 +190,7 @@ dscp_classify() {
 #$iptables -t mangle -A Mice -m addrtype --dst-type MULTICAST 
 #-j DSCP --set-dscp-class AF22 -m comment --comment 'Multicast'
 #Some forms of multicast are good, others bad, but for now...
-	    $iptables -t mangle -A Mice --pkt-type MULTICAST \
+	    $iptables -t mangle -A Mice -m pkttype --pkt-type MULTICAST \
 		-j DSCP --set-dscp-class AF43 \
 		-m comment --comment 'Multicast'
 # Arp replies? DHCP replies?
@@ -300,8 +300,8 @@ done
 # This could be more detailed, but right now...
 
 dscp_icmpv6() {
-    dscp_recreate_filter ip6tables filter ICMP6
-    ip6tables -A ICMP6 -p icmpv6 --comment 'ICMPv6 MICE' -j DSCP --set-dscp $MICE 
+    dscp_recreate_filter ip6tables mangle ICMP6
+    ip6tables -t mangle -A ICMP6 -p icmpv6 -m comment --comment 'ICMPv6 MICE' -j DSCP --set-dscp $MICE 
 }
 
 dscp_icmpv6_stats() {
@@ -342,6 +342,19 @@ dscp_icmpv6_stats() {
 # I think I need to set the skb priority field using tc however
 # this sets marks which aren't the same thing.
 
+
+# const int ieee802_1d_to_ac[8] = {
+#         IEEE80211_AC_BE, 0
+#         IEEE80211_AC_BK, 1
+#         IEEE80211_AC_BK, 2
+#         IEEE80211_AC_BE, 3
+#         IEEE80211_AC_VI, 4
+#         IEEE80211_AC_VI, 5
+#         IEEE80211_AC_VO, 6
+#         IEEE80211_AC_VO  7
+# };
+
+
 dscp_80211e() {
     local iptables
     local device=$1
@@ -349,16 +362,17 @@ dscp_80211e() {
 
     for iptables in iptables ip6tables
     do
-    dscp_recreate_filter $iptables filter Wireless 
-    $iptables -A Wireless -o $device -m dscp --dscp-class CS6 -j CONNMARK --set-mark 261
-    $iptables -A Wireless -o $device -m dscp --dscp-class CS3 -j CONNMARK --set-mark 261
-    $iptables -A Wireless -o $device -m dscp --dscp $MICE -j CONNMARK --set-mark 261
-    $iptables -A Wireless -o $device -m dscp --dscp-class CS5 -j CONNMARK --set-mark 263
-    $iptables -A Wireless -o $device -m dscp --dscp $BOFH -j CONNMARK --set-mark 261
-    $iptables -A Wireless -o $device -m dscp --dscp-class EF -j CONNMARK --set-mark 263
-    $iptables -A Wireless -o $device -m dscp --dscp-class CS1 -j CONNMARK --set-mark 257
-    $iptables -A Wireless -o $device -m dscp --dscp $P2P -j CONNMARK --set-mark 257
-    $iptables -A Wireless -o $device -m dscp --dscp-class CS2 -j CONNMARK --set-mark 257
+    dscp_recreate_filter $iptables mangle W80211e
+    $iptables -t mangle -A W80211e -j CLASSIFY --set-class 0:100 -m comment --comment 'All pkts'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class CS1 -j CLASSIFY --set-class 0:102 -m comment --comment 'Background (BK)(BK)'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class EF -j CLASSIFY --set-class 0:107 -m comment --comment ' Voice (VO)(EF)'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class CS6 -j CLASSIFY --set-class 0:106 -m comment --comment 'Critical (VI)'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class CS3 -j CLASSIFY --set-class 0:104 -m comment --comment 'Video (VO)'
+    $iptables -t mangle -A W80211e -m dscp --dscp $MICE -j CLASSIFY --set-class 0:104 -m comment --comment 'Mice(VO)'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class CS5 -j CLASSIFY --set-class 0:101 -m comment --comment 'Stuff (BK)'
+    $iptables -t mangle -A W80211e -m dscp --dscp $BOFH -j CLASSIFY --set-class 0:104 -m comment --comment 'Typing (VO)'
+    $iptables -t mangle -A W80211e -m dscp --dscp $P2P -j CLASSIFY --set-class 0:101 -m comment --comment 'P2P (BK)'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class CS2 -j CLASSIFY --set-class 0:102 -m comment --comment 'Background (BK)'
     done
 }
 
@@ -439,23 +453,28 @@ dscp_finalize() {
 	dscp_recreate_filter $iptables mangle SYNS
 # FIXME: Expedite has issues at this layer
 #	$iptables -t mangle -A SYNS -j SYN_EXPEDITE 
+
+	[ "$ecn_stats" = 1 ] && { 
 	$iptables -t mangle -A SYNS -j STATS_ECN
+	}
 	$iptables -t mangle -A PREROUTING -j SYNS
-	$iptables -t mangle -A PREROUTING -j D_CLASSIFIER
-	$iptables -t mangle -A PREROUTING -j D_CLASSIFIER_END
 	$iptables -t mangle -A OUTPUT -j SYNS
+	$iptables -t mangle -A PREROUTING -j D_CLASSIFIER
 	$iptables -t mangle -A OUTPUT -j D_CLASSIFIER
-	$iptables -t mangle -A OUTPUT -j D_CLASSIFIER_END
-	$iptables -A OUTPUT -j Wireless
-	$iptables -A FORWARD -j Wireless
+	$iptables -t mangle -A OUTPUT -o wlan+ -j W80211e
+	$iptables -t mangle -A FORWARD -o wlan+ -j W80211e
+ 	[ "$dscp_stats" = 1  ] && { 
 	$iptables -A OUTPUT -j DSCP_STATS
 	$iptables -A FORWARD -j DSCP_STATS
+	}
     done
 # Not clear I have to treat ICMPv6 specially but...
         ip6tables -A OUTPUT -p 58 -s fe80::/10 -j ICMP6
         ip6tables -A FORWARD -p 58 -s fe80::/10 -j ICMP6
+ 	[ "$icmp6_stats" = 1  ] && { 
 	ip6tables -A OUTPUT -p 58 -j ICMP6_STATS 
 	ip6tables -A FORWARD -p 58 -j ICMP6_STATS
+	}
 }
 
 dscp_start() {
