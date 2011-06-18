@@ -368,10 +368,11 @@ dscp_80211e() {
     $iptables -t mangle -A W80211e -m dscp --dscp-class CS1 -j CLASSIFY --set-class 0:102 -m comment --comment 'Background (BK)(BK)'
     $iptables -t mangle -A W80211e -m dscp --dscp-class EF -j CLASSIFY --set-class 0:107 -m comment --comment ' Voice (VO)(EF)'
     $iptables -t mangle -A W80211e -m dscp --dscp-class CS6 -j CLASSIFY --set-class 0:106 -m comment --comment 'Critical (VI)'
-    $iptables -t mangle -A W80211e -m dscp --dscp-class CS3 -j CLASSIFY --set-class 0:104 -m comment --comment 'Video (VO)'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class CS3 -j CLASSIFY --set-class 0:104 -m comment --comment 'Video (VI)'
     $iptables -t mangle -A W80211e -m dscp --dscp $MICE -j CLASSIFY --set-class 0:104 -m comment --comment 'Mice(VO)'
     $iptables -t mangle -A W80211e -m dscp --dscp-class CS5 -j CLASSIFY --set-class 0:101 -m comment --comment 'Stuff (BK)'
-    $iptables -t mangle -A W80211e -m dscp --dscp $BOFH -j CLASSIFY --set-class 0:104 -m comment --comment 'Typing (VO)'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class AF41 -j CLASSIFY --set-class 0:104 -m comment --comment 'Net Radio(VI)'
+    $iptables -t mangle -A W80211e -m dscp --dscp $BOFH -j CLASSIFY --set-class 0:104 -m comment --comment 'Typing (VI)'
     $iptables -t mangle -A W80211e -m dscp --dscp $P2P -j CLASSIFY --set-class 0:101 -m comment --comment 'P2P (BK)'
     $iptables -t mangle -A W80211e -m dscp --dscp-class CS2 -j CLASSIFY --set-class 0:102 -m comment --comment 'Background (BK)'
     done
