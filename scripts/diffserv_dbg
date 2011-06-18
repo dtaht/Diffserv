@@ -5,10 +5,10 @@
 . ./diffserv.conf
 
 DEBUG_LOG=/tmp/diffserv.$$
-ROBUST_STATS=1
 dscp_stats=1
 ecn_stats=1
 icmp6_stats=1
+p80_stats=0
 
 case $1 in 
     up) dscp_start ;;

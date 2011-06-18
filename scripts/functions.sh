@@ -220,6 +220,7 @@ fi
 	dscp_p80_rathole $iptables
 	dscp_WEB $iptables
 
+	[ "$p80_stats" = 1 ] &&
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $BROWSINGPORTS -j P80RATHOLE
 
