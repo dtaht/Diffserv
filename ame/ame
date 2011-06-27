@@ -1,0 +1,85 @@
+#!/bin/sh
+# Ants, Mice, and Elephants
+# Ame (pronounced - "Aim")
+
+tc level
+
+# if !(tcp,tcp6,sctp) goto probably_ant
+# if syn,synack goto mice
+# if seqno < mss goto mice
+
+# 8 
+# 4
+
+
+$iptables -t filter -A INPUT ! -p tcp -j ANTS
+
+
+Network devices are now renamed according to function, in the format
+
+[s|g|d][e|w][radio or vlan number][interface number]
+
+[s|g|d] Secure, guest (or gateway), DMZ
+[e|w] Ethernet or wireless
+[0-Z] radio number or vlan
+[0-Z] interface number
+
+ge00 Internet gateway
+se00 secured local network
+sw00 secured local wireless radio 0 network
+sw10 secured local wireless radio 1 network
+
+ge10 local wired guest vlan
+gw00 local wireless radio 0 guest 0
+gw01 local wireless radio 0 guest 1
+gw10 local wireless mesh
+gw11 local wireless mesh
+
+# What does this accomplish?
+# 1) The relationship between wireless interface and radio is preserved
+# 2) Firewall rules for many networks are made MUCH shorter and simpler
+# 3) You almost never have to restart the firewall
+
+# This replaces a LOT of rules
+
+$iptables -t mangle -A PREROUTING -i s+ -j MARK --set-mark 0x80000000 \
+	  -m comment --comment 'Mark secure networks'
+
+$iptables -t mangle -A POSTROUTING -o s+ -m mark 0x80000000/0x80000000 -g S_CLASSIFIER \
+	  -m comment --comment 'Good Traffic from/to our secured networks'
+
+$iptables -t mangle -A POSTROUTING -o s+ -g PROCESS_THREATS \
+	  -m comment 'Potential problems'
+
+#$iptables -t mangle -A POSTROUTING -o d+ -g PROCESS_THREATS \
+#	  -m comment 'Potential problems'
+
+# I can't think of more rules I would need here
+# REClassifiers
+
+$iptables -t mangle -A S_CLASSIFIER -o se+ -g MACe8021p -m comment --comment 'Wired'
+$iptables -t mangle -A S_CLASSIFIER -o sw+ -g MAC80211e -m comment --comment 'Wireless 
+
+$iptables -t mangle -A G_CLASSIFIER -o se+ -g MACe8021p -m comment --comment 'Wired'
+$iptables -t mangle -A G_CLASSIFIER -o sw+ -g MAC80211e -m comment --comment 'Wireless 
+
+$iptables -t mangle -A D_CLASSIFIER -o de+ -g MACe8021p -m comment --comment 'Wired'
+$iptables -t mangle -A D_CLASSIFIER -o dw+ -g MAC80211e -m comment --comment 'Wireless 
+
+# pfifo_fast basically is due to nat, because we had no information preserved
+# about who was coming in or leaving the network after nat was processed. But 
+# we CAN apply stuff to the inside networks now that MIGHT help somewhat
+
+# AND YEA, the diffserv stuff survives the transition to nat, so we have extra # information about everything by the time we hit the classifiers....
+
+# Drop the n as network interfaces live in their own domain space anyway
+# we also have ppp to deal with
+# get gateway ethernet tunnel - naming scheme for ipv6 gets messed up
+# Compelling advantage that you don't have to change your firewall rules
+# on bringing an interface up or down
+
+se0 htb/sfb/sfq
+sw+ sfb/sfq
+
++ 
+

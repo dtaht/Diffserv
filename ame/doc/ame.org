@@ -1,0 +1,88 @@
+* About AME
+** Ants, Mice, and Elephants
+   An attempt a simpler yet comprehensive classifier and firewall system than diffserv, and one more comprehensive, faster and simpler than the existing firewall and qos system in openwrt
+** Ame (pronounced - "Aim")
+** Intended to be pluggable
+   We need a testbed for alternate QoS systems
+
+* Major change: Device Naming Scheme
+
+Network devices are now renamed according to function, in the format:
+
+[s|g|d][e|w][radio or vlan number][interface number]
+
+[s|g|d] Secure, guest (or gateway), DMZ
+[e|w] Ethernet or wireless
+[0-Z] radio number or vlan
+[0-Z] interface number
+
+** Examples:
+
+ge00 Internet gateway
+se00 secured local network
+sw00 secured local wireless radio 0 network
+sw10 secured local wireless radio 1 network
+
+ge10 local wired guest vlan
+gw00 local wireless radio 0 guest 0
+gw01 local wireless radio 0 guest 1
+gw10 local wireless mesh
+gw11 local wireless mesh
+
+** Advantages
+*** The relationship between wireless interface and radio is preserved
+*** The network no longer makes a distinction between gateways to the internet and gateways to other people
+    Makes mesh routing work better, in particular.
+*** Firewall rules for many networks are made MUCH shorter and simpler
+    By what looks to be an order of magnitude
+*** You almost never have to restart the firewall
+    And will lose natted connections less
+*** Replaces a LOT of rules with pattern matches. Scales well to lots of interfaces
+
+$iptables -t mangle -A PREROUTING -i s+ -j MARK --set-mark 0x80000000 \
+	  -m comment --comment 'Mark secure networks'
+
+$iptables -t mangle -A POSTROUTING -o s+ -m mark 0x80000000/0x80000000 -g S_CLASSIFIER \
+	  -m comment --comment 'Good Traffic from/to our secured networks'
+
+$iptables -t mangle -A POSTROUTING -o s+ -g PROCESS_THREATS \
+	  -m comment 'Potential problems'
+
+$iptables -t mangle -A POSTROUTING -o d+ -g PROCESS_THREATS \
+	  -m comment 'Potential problems'
+
+** Disavantages
+*** Device naming needs to be enforced consistently
+    Very hard to enforce. Many pieces of code have the idea of a specific device name embedded deep within them.
+    Renaming the core ethernet devices is hard to get right.
+*** Hard for humans
+    Humans like names like eth0 and wlan0 which make more sense than sw10 by a LOT. 
+**** Fix - ip supports labeling devices in addition to their name.
+     ip link set $DEV alias whatever
+*** GWXX is confusing
+    Confusable with Gateway. Guest however makes sense too...
+*** Classification is made mildly more difficult for wireless and wired types
+**** Old rule
+     2 rules match against w+ and e+
+**** New rule
+
+$iptables -t mangle -A S_CLASSIFIER -o se+ -g MACe8021p -m comment --comment 'Wired'
+$iptables -t mangle -A S_CLASSIFIER -o sw+ -g MAC80211e -m comment --comment 'Wireless 
+
+$iptables -t mangle -A G_CLASSIFIER -o se+ -g MACe8021p -m comment --comment 'Wired'
+$iptables -t mangle -A G_CLASSIFIER -o sw+ -g MAC80211e -m comment --comment 'Wireless 
+
+$iptables -t mangle -A D_CLASSIFIER -o de+ -g MACe8021p -m comment --comment 'Wired'
+$iptables -t mangle -A D_CLASSIFIER -o dw+ -g MAC80211e -m comment --comment 'Wireless 
+**** Fix
+     The relative scarcity of this last step's complexity vs that of actual firewall rule generation makes this a tolerable problem.
+
+* Random notes towards eventual classification and shaping
+    pfifo_fast suffers due to nat, because we had no information preserved about who was coming in or leaving the network after nat was processed. But  we CAN apply stuff to the inside networks now that MIGHT help somewhat
+
+AND YEA, the diffserv stuff survives the transition to nat, so we have extra # information about everything by the time we hit the classifiers....
+
+we also have ppp to deal with get gateway ethernet tunnel - naming scheme for ipv6 gets messed up
+
+se0 htb/sfb/sfq
+sw+ sfb/sfq
