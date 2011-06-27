@@ -2,10 +2,10 @@
 #Debug code in place
 . ./codepoints.sh
 . ./functions.sh
-. ./diffserv.conf
+. ./ame.conf
 . ./user.conf
 
-DEBUG_LOG=/tmp/diffserv.$$
+DEBUG_LOG=/tmp/ame.$$
 dscp_stats=1
 ecn_stats=1
 icmp6_stats=1
