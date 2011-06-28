@@ -65,15 +65,27 @@ p80_rathole() {
 
 dscp_WEB() {
     local iptables=$1
+    recreate_filter $iptables mangle SWEB
+    recreate_filter $iptables mangle TESTS
     recreate_filter $iptables mangle WEB
 
 # if the vast majority of websites out there want to classify
 # as bulk, let them.
 # Arguably allowing a range here would be good.
+    [ "$p80_stats" = 1 ] &&
+    $iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	--ports $BROWSINGPORTS -j P80RATHOLE
 
     $iptables -t mangle -A WEB -m dscp ! --dscp-class CS1 -j DSCP \
+        --set-dscp-class AF22 \
+	-m comment --comment 'Bulk BROWSING'
+    $iptables -t mangle -A WEB -m dscp --dscp-class CS1 -j DSCP \
         --set-dscp-class AF23 \
-	-m comment --comment 'BROWSING'
+	-m comment --comment 'BE BROWSING'
+    $iptables -t mangle -A SWEB -j DSCP --set-dscp-class AF21 \
+	-m comment --comment 'Proxies/433'
+    $iptables -t mangle -A TESTS -j DSCP --set-dscp-class CS1 -m comment \
+	    --comment 'Bandwidth Tests'
 }
 
 # I am not sure why I used tcp and udp distinctions. 
@@ -96,9 +108,9 @@ classify() {
 # as are fins and fin/acks, sorta. And we usually do interesting stuff on syns
 
 	$iptables -t mangle -A SYN_EXPEDITE -p tcp -m tcp --syn -j DSCP \
-	    --set-dscp-class AF21 -m comment --comment 'Expedite new connections' 
+	    --set-dscp-class AF11 -m comment --comment 'Expedite new connections' 
 	$iptables -t mangle -A SYN_EXPEDITE -p tcp -m tcp --tcp-flags ALL SYN,ACK -j DSCP \
-	    --set-dscp-class AF21 -m comment --comment 'Expedite new connection ack' 
+	    --set-dscp-class AF11 -m comment --comment 'Expedite new connection ack' 
 
 # FIXME: Maybe make ECN enabled streams mildly higher priority. 
 # This just counts the number of ECN and non-ECN streams
@@ -200,6 +212,25 @@ fi
 
 	$iptables -t mangle -A D_CLASSIFIER ! -p tcp -g Ants
 
+# 98% of traffic these days is on the web
+# FIXME: Actually reclassifying web traffic needs a new idea
+
+	[ "$p80_stats" = "1" ] && p80_rathole $iptables
+	dscp_WEB $iptables
+
+	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	    --ports $BROWSINGPORTS -g WEB -m comment --comment 'BROWSING'
+
+	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	    --ports $PROXYPORTS -g SWEB \
+	    -m comment --comment 'Proxies/433'
+
+	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	    --ports $TESTPORTS -g TESTS \
+
+# Making everything walk all this is bad, and we need to be cleverer
+# about traffic coming from the machine itself
+
 # SSH is bimodal inside a connection
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
@@ -216,20 +247,6 @@ fi
 	    --ports $ROUTINGPORTS -j DSCP --set-dscp-class CS6 \
 	    -m comment --comment 'Routing'
 
-	[ "$p80_stats" = "1" ] && p80_rathole $iptables
-# FIXME: Actually reclassifying web traffic needs a new idea
-	dscp_WEB $iptables
-
-	[ "$p80_stats" = 1 ] &&
-	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $BROWSINGPORTS -j P80RATHOLE
-
-	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $BROWSINGPORTS -j WEB -m comment --comment 'BROWSING'
-
-	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $PROXYPORTS -j DSCP --set-dscp-class AF22 \
-	    -m comment --comment 'Web proxies better for browsing'
 # Arguably want a better class for git. Bulk?
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $SCMPORTS -j DSCP --set-dscp-class AF13 \
@@ -258,9 +275,6 @@ fi
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $BULKPORTS -j DSCP --set-dscp-class CS1 \
 	    -m comment --comment 'BULK'
-	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $TESTPORTS -j DSCP --set-dscp-class CS1 -m comment \
-	    --comment 'Bandwidth Tests'
 # There is no codepoint for torrent. Perhaps we need to invent one
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $P2PPORTS -j DSCP --set-dscp $P2P -m comment \
@@ -374,6 +388,7 @@ mac80211e() {
     $iptables -t mangle -A W80211e -m dscp --dscp-class CS5 -j CLASSIFY  --set-class 0:101 -m comment --comment  'General Stuff (BK)'
     $iptables -t mangle -A W80211e -m dscp --dscp $P2P -j CLASSIFY       --set-class 0:101 -m comment --comment  'P2P (BK)'
     $iptables -t mangle -A W80211e -m dscp --dscp-class CS2 -j CLASSIFY  --set-class 0:102 -m comment --comment  'Background (BK)'
+    $iptables -t mangle -A W80211e -m dscp --dscp-class AF33 -j CLASSIFY --set-class 0:102 -m comment --comment  'Background (AF33)'
     done
 }
 
@@ -399,38 +414,37 @@ dscp_stats() {
     local iptables
     for iptables in iptables ip6tables
     do
-    recreate_filter $iptables filter DSCP_END
     recreate_filter $iptables filter DSCP_STATS
     
 # this first doesn't belong here.
     
-#   $iptables -t filter -A DSCP_STATS -p udp -m multiport --ports $VPNPORTS -m comment --comment  'VPN' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class BE   -m comment --comment 'BE'   -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS1  -m comment --comment 'CS1'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS6  -m comment --comment 'CS6'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp $BOFH      -m comment --comment 'BOFH' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp $ANT       -m comment --comment 'ANT'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class EF   -m comment --comment 'EF'   -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF22 -m comment --comment 'AF22' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF23 -m comment --comment 'AF23' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp $P2P       -m comment --comment 'P2P'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF41 -m comment --comment 'AF41' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS7  -m comment --comment 'CS7'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS5  -m comment --comment 'CS5'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS4  -m comment --comment 'CS4'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS3  -m comment --comment 'CS3'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS2  -m comment --comment 'CS2'  -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF42 -m comment --comment 'AF42' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF43 -m comment --comment 'AF43' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF11 -m comment --comment 'AF11' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF12 -m comment --comment 'AF12' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF13 -m comment --comment 'AF13' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF21 -m comment --comment 'AF21' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF31 -m comment --comment 'AF31' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF32 -m comment --comment 'AF32' -g DSCP_END
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF33 -m comment --comment 'AF33' -g DSCP_END
+#   $iptables -t filter -A DSCP_STATS -p udp -m multiport --ports $VPNPORTS -m comment --comment  'VPN' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class BE   -m comment --comment 'BE'   -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS1  -m comment --comment 'CS1'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS6  -m comment --comment 'CS6'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp $BOFH      -m comment --comment 'BOFH' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp $ANT       -m comment --comment 'ANT'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class EF   -m comment --comment 'EF'   -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF21 -m comment --comment 'AF21' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF22 -m comment --comment 'AF22' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF23 -m comment --comment 'AF23' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp $P2P       -m comment --comment 'P2P'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF41 -m comment --comment 'AF41' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS7  -m comment --comment 'CS7'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS5  -m comment --comment 'CS5'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS4  -m comment --comment 'CS4'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS3  -m comment --comment 'CS3'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class CS2  -m comment --comment 'CS2'  -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF42 -m comment --comment 'AF42' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF43 -m comment --comment 'AF43' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF11 -m comment --comment 'AF11' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF12 -m comment --comment 'AF12' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF13 -m comment --comment 'AF13' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF31 -m comment --comment 'AF31' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF32 -m comment --comment 'AF32' -j RETURN
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp-class AF33 -m comment --comment 'AF33' -j RETURN
 # Some non-standardized classifications
-    $iptables -t filter -A DSCP_STATS -m dscp --dscp $LB -m comment --comment 'LB' -g DSCP_END
+    $iptables -t filter -A DSCP_STATS -m dscp --dscp $LB -m comment --comment 'LB' -j RETURN
     $iptables -t filter -A DSCP_STATS -m comment --comment 'Unmatched' -j LOG
     done
 }
