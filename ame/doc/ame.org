@@ -3,7 +3,8 @@
    An attempt a simpler yet comprehensive classifier and firewall system than diffserv, and one more comprehensive, faster and simpler than the existing firewall and qos system in openwrt
 ** Ame (pronounced - "Aim")
 ** Intended to be pluggable
-   We need a testbed for alternate QoS systems
+   We need a testbed for alternate QoS systems that exists cleanly outside the firewall rules
+   We need to allow multiple protocols through cleanly
 
 * Major change: Device Naming Scheme
 
@@ -13,26 +14,34 @@ Network devices are now renamed according to function, in the format:
 
 [s|g|d] Secure, guest (or gateway), DMZ
 [e|w] Ethernet or wireless
-[0-Z] radio number or vlan
+[0-Z] radio number 
 [0-Z] interface number
+.X vlan (I hope)
 
 ** Examples:
 
 ge00 Internet gateway
+gw00 Wireless internet gateway
 se00 secured local network
-sw00 secured local wireless radio 0 network
 sw10 secured local wireless radio 1 network
+sw20 secured local wireless radio 2 network
+
+gw0X
+gw0
 
 ge10 local wired guest vlan
-gw00 local wireless radio 0 guest 0
-gw01 local wireless radio 0 guest 1
-gw10 local wireless mesh
-gw11 local wireless mesh
+
+gw10 local wireless radio 1 guest 0
+gw11 local wireless radio 2 guest 1
+gw20 local wireless mesh
+gw21 local wireless mesh
 
 ** Advantages
 *** The relationship between wireless interface and radio is preserved
-*** The network no longer makes a distinction between gateways to the internet and gateways to other people
+*** The network no longer makes root distinction between gateways to the internet and gateways to other people
     Makes mesh routing work better, in particular.
+*** Short chains
+*** Support for multiport matches
 *** Firewall rules for many networks are made MUCH shorter and simpler
     By what looks to be an order of magnitude
 *** You almost never have to restart the firewall
@@ -51,12 +60,16 @@ $iptables -t mangle -A POSTROUTING -o s+ -g PROCESS_THREATS \
 $iptables -t mangle -A POSTROUTING -o d+ -g PROCESS_THREATS \
 	  -m comment 'Potential problems'
 
-** Disavantages
+** Disadvantages
+*** Not quite a drop in replacement for existing zone rules
 *** Device naming needs to be enforced consistently
     Very hard to enforce. Many pieces of code have the idea of a specific device name embedded deep within them.
-    Renaming the core ethernet devices is hard to get right.
+    Renaming the core ethernet devices is hard to get right. Multiple packages need to be modified to support this
+    properly: ppp, openvpn, 6in4, 6to4, strongswan, notably. Bridging and vlans are made more difficult
 *** Hard for humans
     Humans like names like eth0 and wlan0 which make more sense than sw10 by a LOT. 
+**** Makes writing firewall rules and classifiers much simpler
+     This is also very hard for humans, so...
 **** Fix - ip supports labeling devices in addition to their name.
      ip link set $DEV alias whatever
 *** GWXX is confusing

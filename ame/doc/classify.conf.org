@@ -1,0 +1,21 @@
+* Classifier Table explanations
+
+FREQ             0-9 How much relative traffic this rule gets 0 - lowest 9 highest
+FROM-NET         IPv4 or 6 address/subnet
+TO-NET           IPv4 or 6 address/subnet
+FROM-PORTRANGE   port,port,port:range
+TO-PORTRANGE     port,port,port:range
+PROTO            tcp,tcp4,tcp6,udp,udp4,udp6,icmp,icmp6, or proto number
+TAG              User definable tag
+MODE             Process mode Currently NORMAL,ADMIN,BIMODAL,ASTREAM,VSTREAM
+TYPE             ANT,ELEPHANT
+FLAG             USE or IGN (ignore)
+8021D1-IN        8021D priority
+8021D2-IN        8021D priority
+8021D1-OUT       8021D priority
+8021D2-OUT       8021D priority
+DSCP1-IN         DIFFSERV
+DSCP2-IN         DIFFSERV
+DSCP1-OUT        DIFFSERV
+DSCP2-OUT        DIFFSERV
+COMMENT         "Comment"

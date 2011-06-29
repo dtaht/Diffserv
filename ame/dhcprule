@@ -16,8 +16,8 @@ do
 net=`echo $ipaddr | cut -f2 -d/`
 [ "$net" = 24 ] && {
 ip=`echo $ipaddr | cut -f1-3 -d.`
-ip route del $ip/24 dev $DEV table $dhcp
-ip route add $ip/24 dev $DEV table $dhcp
+ip route del $ip/27 dev $DEV table $dhcp
+ip route add $ip/27 dev $DEV table $dhcp
 }
 done
 

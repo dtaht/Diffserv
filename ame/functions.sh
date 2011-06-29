@@ -72,9 +72,9 @@ dscp_WEB() {
 # if the vast majority of websites out there want to classify
 # as bulk, let them.
 # Arguably allowing a range here would be good.
-    [ "$p80_stats" = 1 ] &&
-    $iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	--ports $BROWSINGPORTS -j P80RATHOLE
+
+    [ "$p80_stats" = "1" ] && p80_rathole $iptables
+    [ "$p80_stats" = "1" ] && $iptables -t mangle -A WEB -j P80RATHOLE
 
     $iptables -t mangle -A WEB -m dscp ! --dscp-class CS1 -j DSCP \
         --set-dscp-class AF22 \
@@ -215,8 +215,14 @@ fi
 # 98% of traffic these days is on the web
 # FIXME: Actually reclassifying web traffic needs a new idea
 
-	[ "$p80_stats" = "1" ] && p80_rathole $iptables
 	dscp_WEB $iptables
+
+# This set of rules cuts performance down to less that 50Mbit/sec
+# for the bottommost rules. Since we're trying to get to where we
+# have CPU left over AND can see bufferbloat, do the test match first
+
+	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
+	    --ports $TESTPORTS -g TESTS \
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $BROWSINGPORTS -g WEB -m comment --comment 'BROWSING'
@@ -225,16 +231,13 @@ fi
 	    --ports $PROXYPORTS -g SWEB \
 	    -m comment --comment 'Proxies/433'
 
-	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $TESTPORTS -g TESTS \
-
 # Making everything walk all this is bad, and we need to be cleverer
 # about traffic coming from the machine itself
 
 # SSH is bimodal inside a connection
 
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
-	    --ports $INTERACTIVEPORTS -j BIMODAL -m comment --comment 'SSH'
+	    --ports $INTERACTIVEPORTS -g BIMODAL -m comment --comment 'SSH'
 # CS4 for Xwin almost makes sense
 	$iptables -t mangle -A D_CLASSIFIER -p tcp -m tcp -m multiport \
 	    --ports $XWINPORTS -j DSCP --set-dscp-class CS4 \
@@ -319,6 +322,8 @@ icmpv6() {
     ip6tables -t mangle -A C_ICMP6 -p icmpv6 -m comment --comment 'ICMPv6 ANT' -j DSCP --set-dscp $ANT 
 }
 
+# More or less sorted by frequency
+
 icmpv6_stats() {
     recreate_filter ip6tables filter ICMP6_STATS
     ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 128 -m comment --comment 'ping' -j RETURN
@@ -327,7 +332,7 @@ icmpv6_stats() {
     ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 136 -m comment --comment 'Neighbor Advertisement' -j RETURN
     ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 1 -m comment --comment   'dest unreachable' -j RETURN
     ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 2 -m comment --comment   'packet too big' -j RETURN
-    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 3 -m comment --comment   'parameter problem' 
+    ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 3 -m comment --comment   'parameter problem' -j RETURN
     ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 133 -m comment --comment 'Router Solicitation' -j RETURN
     ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 134 -m comment --comment 'Router Advertisement' -j RETURN
     ip6tables -A ICMP6_STATS -p icmpv6 --icmpv6-type 130 -m comment --comment 'Group Membership query' -j RETURN
@@ -371,9 +376,32 @@ icmpv6_stats() {
 
 # E and D can be the same, actually
 
+# FIXME: These theoretically are priority << 13, don't match with 
+# the fixed stuff in the vlan kernel
+
+mac8021q() {
+    local iptables
+    for iptables in iptables ip6tables
+    do
+    recreate_filter $iptables mangle W8021q
+    $iptables -t mangle -A W8021q -j CLASSIFY --set-class 0:103 -m comment --comment                            'Reclassify BE'
+    $iptables -t mangle -A W8021q -m dscp --dscp-class EF -j CLASSIFY   --set-class 0:107 -m comment --comment  'Voice (VO)(EF)'
+    $iptables -t mangle -A W8021q -m dscp --dscp-class CS6 -j CLASSIFY  --set-class 0:106 -m comment --comment  'Critical (VO)'
+    $iptables -t mangle -A W8021q -m dscp --dscp $ANT -j CLASSIFY       --set-class 0:105 -m comment --comment  'Ants(VI)'
+    $iptables -t mangle -A W8021q -m dscp --dscp $BOFH -j CLASSIFY      --set-class 0:105 -m comment --comment  'Typing (VI)'
+    $iptables -t mangle -A W8021q -m dscp --dscp-class AF41 -j CLASSIFY --set-class 0:104 -m comment --comment  'Net Radio(VI)'
+    $iptables -t mangle -A W8021q -m dscp --dscp-class CS3 -j CLASSIFY  --set-class 0:104 -m comment --comment  'Video (VI)'
+    $iptables -t mangle -A W8021q -m dscp --dscp-class CS1 -j CLASSIFY  --set-class 0:102 -m comment --comment  'Background (BK)'
+    $iptables -t mangle -A W8021q -m dscp --dscp-class CS5 -j CLASSIFY  --set-class 0:101 -m comment --comment  'General Stuff (BK)'
+    $iptables -t mangle -A W8021q -m dscp --dscp $P2P -j CLASSIFY       --set-class 0:101 -m comment --comment  'P2P (BK)'
+    $iptables -t mangle -A W8021q -m dscp --dscp-class CS2 -j CLASSIFY  --set-class 0:102 -m comment --comment  'Background (BK)'
+    $iptables -t mangle -A W8021q -m dscp --dscp-class AF33 -j CLASSIFY --set-class 0:102 -m comment --comment  'Background (AF33)'
+    done
+}
+
+# FIXME
 mac80211e() {
     local iptables
-    local device=$1
     for iptables in iptables ip6tables
     do
     recreate_filter $iptables mangle W80211e
@@ -390,18 +418,6 @@ mac80211e() {
     $iptables -t mangle -A W80211e -m dscp --dscp-class CS2 -j CLASSIFY  --set-class 0:102 -m comment --comment  'Background (BK)'
     $iptables -t mangle -A W80211e -m dscp --dscp-class AF33 -j CLASSIFY --set-class 0:102 -m comment --comment  'Background (AF33)'
     done
-}
-
-# FIXME
-mac8021d() {
-    local device=$1
-    local iptables
-    for iptables in iptables ip6tables
-    do
-    recreate_filter $iptables filter Wired
-	:
-	# finish me
-	done
 }
 
 
@@ -461,9 +477,30 @@ clean() {
 	iptables -t filter -F
 	iptables -t mangle -F
 	iptables -t raw -F
+
 #	iptables -t nat -F
+
+	ip6tables -t filter -X
+	ip6tables -t mangle -X
+	iptables -t filter -X
+	iptables -t mangle -X
+	iptables -t raw -X
+
 }
 
+# Send various interfaces to last classifier
+
+addoifs() {
+    local iptables=$1
+    local table=$2
+    local chain=$3
+    local target=$4
+    local devs="$5"
+    for d in $devs
+    do
+	$iptables -t $table -A $chain -o $d -j $target
+    done
+}
 
 finalize() {
     for iptables in iptables ip6tables
@@ -487,14 +524,16 @@ finalize() {
              ip6tables -t mangle -A OUTPUT -p 58 -s fe80::/10 -j C_ICMP6
              ip6tables -t mangle -A FORWARD -p 58 -s fe80::/10 -j C_ICMP6
 	fi
-	$iptables -t mangle -A OUTPUT -o wlan+ -j W80211e
-	$iptables -t mangle -A FORWARD -o wlan+ -j W80211e
+	addoifs $iptables mangle OUTPUT W80211e "$WIRELESS_DEVS"
+	addoifs $iptables mangle FORWARD W80211e "$WIRELESS_DEVS"
+	addoifs $iptables mangle OUTPUT W8021q "$WIRED_DEVS"
+	addoifs $iptables mangle FORWARD W8021q "$WIRED_DEVS"
  	[ "$dscp_stats" = 1  ] && { 
 	$iptables -A OUTPUT -j DSCP_STATS
 	$iptables -A FORWARD -j DSCP_STATS
 	}
     done
- 	[ "$icmp6_stats" = 1  ] && { 
+ 	[ "$icmp6_stats" = "1"  ] && { 
 	ip6tables -A OUTPUT -p 58 -j ICMP6_STATS 
 	ip6tables -A FORWARD -p 58 -j ICMP6_STATS
 	}
@@ -506,9 +545,8 @@ start() {
     icmpv6_stats
     dscp_stats
     classify
-# Ultimately drive these with variables
-    mac80211e sw+ gw+ 
-    mac8021d se+ ge+
+    mac80211e
+    mac8021q
     finalize
 }
 
